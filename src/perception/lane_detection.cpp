@@ -136,4 +136,52 @@ detect_lanes(cv::Mat &bev, const adas::config::PerceptionConfig &config) {
   return detected_boundaries;
 }
 
+int detect_lanes_demo(const adas::config::PerceptionConfig &config, cv::Mat ipm) {
+  cv::Mat frame = cv::imread(config.image_path);
+  if (frame.empty()) {
+    std::cerr << "Failed to load image: " << config.image_path << std::endl;
+    return -1;
+  }
+  cv::resize(frame, frame, cv::Size(640, 480));
+
+  cv::Mat bev;
+  cv::warpPerspective(frame, bev, ipm, cv::Size(640, 480));
+
+    // Run lane detection using loaded configuration parameters
+    std::vector<adas::core::PolynomialLaneBoundary> boundaries =
+        adas::perception::detect_lanes(bev, config);
+
+    // Compute binary image for visualization using config threshold
+    cv::Mat gray, binary;
+    cv::cvtColor(bev, gray, cv::COLOR_BGR2GRAY);
+    cv::threshold(gray, binary, config.white_pixel_threshold, 255, cv::THRESH_BINARY);
+
+    cv::Mat debug_vis = bev.clone();
+
+    if (boundaries.empty()) {
+      std::cout << "No valid lane boundaries detected." << std::endl;
+    } else {
+      for (size_t i = 0; i < boundaries.size(); ++i) {
+        const auto &lane = boundaries[i];
+
+        // Draw fitted polynomial curve
+        for (int y_coord = 0; y_coord < 480; y_coord += 2) {
+          double x_coord = lane.evaluate(y_coord);
+          if (x_coord >= 0 && x_coord < 640) {
+            cv::circle(debug_vis, cv::Point(static_cast<int>(x_coord), y_coord),
+                       2, cv::Scalar(0, 255, 0), -1);
+          }
+        }
+
+        std::cout << "Fitted Polynomial [" << i << "]: y = " << lane.c0 << " + "
+                  << lane.c1 << "*x + " << lane.c2 << "*x^2 \n";
+      }
+    }
+
+    cv::imshow("Original Frame", frame);
+    cv::imshow("BEV Binary", binary);
+    cv::imshow("Fitted Lane (BEV)", debug_vis);
+    cv::waitKey(0);
+}
+
 } // namespace adas::perception

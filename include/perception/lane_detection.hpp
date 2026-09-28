@@ -12,4 +12,7 @@ std::vector<adas::core::PolynomialLaneBoundary>
 detect_lanes(cv::Mat &bev,
              const adas::config::PerceptionConfig &config = adas::config::PerceptionConfig{});
 
+//Demo lane detection on given image
+int detect_lanes_demo(const adas::config::PerceptionConfig &config, cv::Mat ipm);
+
 } // namespace adas::perception

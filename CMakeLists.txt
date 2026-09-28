@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.16)
 project(adas_stack VERSION 0.1.0 LANGUAGES CXX)
 
 # C++ Standard Configuration
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -17,7 +17,8 @@ find_package(nlohmann_json CONFIG REQUIRED)
 add_library(adas_stack_lib
     src/config/config.cpp
     src/perception/lane_detection.cpp
-    src/perception/calibration.cpp
+    src/calibration/extrinsic_calibration.cpp
+    src/calibration/intrinsic_calibration.cpp
 )
 
 target_include_directories(adas_stack_lib PUBLIC

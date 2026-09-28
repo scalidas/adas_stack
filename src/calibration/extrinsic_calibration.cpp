@@ -1,4 +1,4 @@
-#include "perception/calibration.hpp"
+#include "calibration/extrinsic_calibration.hpp"
 #include <algorithm>
 #include <cmath>
 
@@ -44,11 +44,11 @@ static void mouse_callback(int event, int x, int y, int flags, void *userdata) {
   }
 }
 
-std::vector<cv::Point2f> interactive_calibration(std::string image_path) {
+int run_extrinsic_calibration(std::string image_path) {
   cv::Mat frame = cv::imread(image_path);
   if (frame.empty()) {
     std::cerr << "Failed to load image: " << image_path << std::endl;
-    return {};
+    return -1;
   }
 
   cv::resize(frame, frame, cv::Size(640, 480));
@@ -162,7 +162,7 @@ std::vector<cv::Point2f> interactive_calibration(std::string image_path) {
   std::cout << "  Bottom-Right: {" << state.points[3].x << "f, "
             << state.points[3].y << "f}\n\n";
 
-  return state.points;
+  return 0;
 }
 
 } // namespace adas::calibration

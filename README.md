@@ -16,8 +16,13 @@ cmake --build build --config Release
 .\build\Release\perception_stack.exe detect_lane --config config/perception_config.json
 ```
 
-#### Calibrate
+#### Intrinsic Calibrate
 ```
-.\build\Release\perception_stack.exe calibrate assets/calibration/WIN_20260926_19_24_20_Pro.jpg
+.\build\Release\adas_stack.exe instrinsic_calibration assets\calibration\phone_mounted_calibration.jpg
+```
+
+#### Extrinsic Calibrate
+```
+.\build\Release\adas_stack.exe extrinsic_calibration assets\calibration\phone_mounted_calibration.jpg
 ```
 

@@ -1,0 +1,49 @@
+<?xml version="1.0"?>
+<opencv_storage>
+<Settings>
+  <!-- Number of INNER corners per row and column (e.g., standard 10x7 checkerboard has 9x6 inner corners) -->
+  <BoardSize_Width>8</BoardSize_Width>
+  <BoardSize_Height>6</BoardSize_Height>
+  
+  <!-- Physical size of one square edge in millimeters (update this to match your printed target) -->
+  <Square_Size>24.0</Square_Size>
+  
+  <Calibrate_Pattern>"CHESSBOARD"</Calibrate_Pattern>
+  
+  <!-- Path to the image list XML -->
+  <Input>"C:/Users/calid/OneDrive/Documents/Purdue/Senior/ece49022/adas_stack/config/calibration/pixel_7_images.xml"</Input>
+  <Input_FlipAroundHorizontalAxis>0</Input_FlipAroundHorizontalAxis>
+  <Input_Delay>100</Input_Delay>  
+  
+  <!-- Number of frames to use from input list -->
+  <Calibrate_NrOfFrameToUse>20</Calibrate_NrOfFrameToUse>
+
+  <!-- Let fx and fy vary freely (0 = solve independently) -->
+  <Calibrate_FixAspectRatio>0</Calibrate_FixAspectRatio>
+
+  <!-- Solve for tangential distortion (p1, p2) -->
+  <Calibrate_AssumeZeroTangentialDistortion>0</Calibrate_AssumeZeroTangentialDistortion>
+
+  <!-- Solve for true principal point (cx, cy) -->
+  <Calibrate_FixPrincipalPointAtTheCenter>0</Calibrate_FixPrincipalPointAtTheCenter>
+  
+  <!-- Output camera calibration file -->
+  <Write_outputFileName>"assets/calibration/intrinsic/pixel_7/pixel_7_intrinsics.xml"</Write_outputFileName>
+  
+  <Write_DetectedFeaturePoints>1</Write_DetectedFeaturePoints>
+  <Write_extrinsicParameters>1</Write_extrinsicParameters>
+  <Show_UndistortedImage>1</Show_UndistortedImage>
+  
+  <!-- Standard pinhole + polynomial distortion model (not fisheye) -->
+  <Calibrate_UseFisheyeModel>0</Calibrate_UseFisheyeModel>
+
+  <!-- Estimate standard radial distortion terms k1, k2, k3 -->
+  <Fix_K1>0</Fix_K1>
+  <Fix_K2>0</Fix_K2>
+  <Fix_K3>0</Fix_K3>
+
+  <!-- Higher-order rational model terms fixed to 0 -->
+  <Fix_K4>1</Fix_K4>
+  <Fix_K5>1</Fix_K5>
+</Settings>
+</opencv_storage>
