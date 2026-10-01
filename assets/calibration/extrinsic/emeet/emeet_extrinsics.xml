@@ -1,0 +1,23 @@
+<?xml version="1.0"?>
+<opencv_storage>
+<homography_matrix type_id="opencv-matrix">
+  <rows>3</rows>
+  <cols>3</cols>
+  <dt>d</dt>
+  <data>
+    11.320754716981231 12.651991614255868 -3459.2976939203659
+    5.9186206189127649e-15 25.398584905660581 -3917.4787735849386
+    1.3784579466049919e-17 0.037735849056604084 1.</data></homography_matrix>
+<src_points type_id="opencv-matrix">
+  <rows>4</rows>
+  <cols>1</cols>
+  <dt>"2f"</dt>
+  <data>
+    247. 203. 400. 203. 164. 419. 461. 419.</data></src_points>
+<dst_points type_id="opencv-matrix">
+  <rows>4</rows>
+  <cols>1</cols>
+  <dt>"2f"</dt>
+  <data>
+    220. 143. 420. 143. 220. 400. 420. 400.</data></dst_points>
+</opencv_storage>

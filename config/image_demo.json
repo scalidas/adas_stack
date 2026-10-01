@@ -1,5 +1,7 @@
 {
     "image_path": "assets/calibration/WIN_20260926_19_24_20_Pro.jpg",
+    "intrinsics_path": "assets/calibration/intrinsic/emeet/emeet_intrinsics.xml",
+    "extrinsics_path": "config/calibration/emeet_extrinsics.xml",
     "min_inlier_count": 100,
     "ransac_inlier_threshold": 50.0,
     "ransac_iterations": 150,

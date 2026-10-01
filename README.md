@@ -13,7 +13,7 @@ cmake --build build --config Release
 #### Detect Lane
 
 ```
-.\build\Release\perception_stack.exe detect_lane --config config/perception_config.json
+.\build\Release\adas_stack.exe detect_lane_demo --config config/perception_config.json
 ```
 
 #### Intrinsic Calibrate

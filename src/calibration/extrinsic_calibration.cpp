@@ -44,7 +44,74 @@ static void mouse_callback(int event, int x, int y, int flags, void *userdata) {
   }
 }
 
-int run_extrinsic_calibration(std::string image_path) {
+bool save_extrinsic_calibration(const std::string &filename,
+                                const std::vector<cv::Point2f> &src_pts,
+                                const std::vector<cv::Point2f> &dst_pts,
+                                const cv::Mat &H) {
+  cv::FileStorage fs(filename, cv::FileStorage::WRITE);
+  if (!fs.isOpened()) {
+    std::cerr << "[Extrinsics] Failed to open file for writing: " << filename
+              << std::endl;
+    return false;
+  }
+
+  cv::Mat src_mat(src_pts), dst_mat(dst_pts);
+  fs << "homography_matrix" << H;
+  fs << "src_points" << src_mat;
+  fs << "dst_points" << dst_mat;
+
+  std::cout << "[Extrinsics] Successfully saved extrinsic calibration to: "
+            << filename << std::endl;
+  return true;
+}
+
+bool load_extrinsic_calibration(const std::string &filename, cv::Mat &H,
+                                std::vector<cv::Point2f> *src_pts,
+                                std::vector<cv::Point2f> *dst_pts) {
+  if (filename.empty())
+    return false;
+
+  cv::FileStorage fs(filename, cv::FileStorage::READ);
+  if (!fs.isOpened()) {
+    return false;
+  }
+
+  fs["homography_matrix"] >> H;
+  if (H.empty()) {
+    std::cerr << "[Extrinsics] Invalid homography matrix in: " << filename
+              << std::endl;
+    return false;
+  }
+
+  if (src_pts) {
+    cv::Mat src_mat;
+    fs["src_points"] >> src_mat;
+    if (!src_mat.empty()) {
+      src_pts->clear();
+      for (int i = 0; i < src_mat.rows; ++i) {
+        src_pts->push_back(src_mat.at<cv::Point2f>(i));
+      }
+    }
+  }
+
+  if (dst_pts) {
+    cv::Mat dst_mat;
+    fs["dst_points"] >> dst_mat;
+    if (!dst_mat.empty()) {
+      dst_pts->clear();
+      for (int i = 0; i < dst_mat.rows; ++i) {
+        dst_pts->push_back(dst_mat.at<cv::Point2f>(i));
+      }
+    }
+  }
+
+  std::cout << "[Extrinsics] Successfully loaded extrinsic calibration from: "
+            << filename << std::endl;
+  return true;
+}
+
+int run_extrinsic_calibration(const std::string &image_path,
+                              const std::string &output_path) {
   cv::Mat frame = cv::imread(image_path);
   if (frame.empty()) {
     std::cerr << "Failed to load image: " << image_path << std::endl;
@@ -53,9 +120,20 @@ int run_extrinsic_calibration(std::string image_path) {
 
   cv::resize(frame, frame, cv::Size(640, 480));
 
-  // Default 4 corner source points
   CalibrationState state;
-  state.points = { {223.0f, 240.0f}, {391.0f, 241.0f}, {170.0f, 393.0f}, {444.0f, 394.0f}};
+  cv::Mat dummy_H;
+  // Try to load existing points from file if available
+  if (!load_extrinsic_calibration(output_path, dummy_H, &state.points, nullptr) ||
+      state.points.size() != 4) {
+    // Default 4 corner source points
+    state.points = {{223.0f, 240.0f},
+                    {391.0f, 241.0f},
+                    {170.0f, 393.0f},
+                    {444.0f, 394.0f}};
+  }
+
+  const std::vector<cv::Point2f> dst_pts = {
+      {220.0f, 143.0f}, {420.0f, 143.0f}, {220.0f, 400.0f}, {420.0f, 400.0f}};
 
   const std::string win_name = "Interactive Calibration";
   cv::namedWindow(win_name, cv::WINDOW_AUTOSIZE);
@@ -98,7 +176,7 @@ int run_extrinsic_calibration(std::string image_path) {
                   cv::LINE_AA);
     }
 
-    //Picture-in-Picture zoom
+    // Picture-in-Picture zoom
     cv::Point2f zoom_target = (state.selected_point != -1)
                                   ? state.points[state.selected_point]
                                   : state.current_mouse_pt;
@@ -118,7 +196,7 @@ int run_extrinsic_calibration(std::string image_path) {
     cv::resize(cropped, zoomed, cv::Size(pip_size, pip_size), 0, 0,
                cv::INTER_NEAREST);
 
-    // crosshair for zoom
+    // Crosshair for zoom
     int center = pip_size / 2;
     cv::line(zoomed, cv::Point(center - 15, center),
              cv::Point(center + 15, center), cv::Scalar(0, 0, 255), 1);
@@ -126,7 +204,7 @@ int run_extrinsic_calibration(std::string image_path) {
              cv::Point(center, center + 15), cv::Scalar(0, 0, 255), 1);
     cv::circle(zoomed, cv::Point(center, center), 2, cv::Scalar(0, 255, 255), -1);
 
-    //Move the window out of the way of the mouse
+    // Move the window out of the way of the mouse
     int pip_x = (zoom_target.x > 320 && zoom_target.y < 240) ? 10 : (canvas.cols - pip_size - 10);
     int pip_y = 10;
     cv::Rect pip_roi(pip_x, pip_y, pip_size, pip_size);
@@ -141,7 +219,7 @@ int run_extrinsic_calibration(std::string image_path) {
     cv::imshow(win_name, canvas);
 
     int key = cv::waitKey(30);
-    if (key == 27) { // ESC key
+    if (key == 27 || key == 's' || key == 'S') { // ESC or 's' key to save and exit
       break;
     } else if (key == '+' || key == '=') {
       state.zoom_factor = std::min(10.0f, state.zoom_factor + 1.0f);
@@ -161,6 +239,10 @@ int run_extrinsic_calibration(std::string image_path) {
             << state.points[2].y << "f}\n";
   std::cout << "  Bottom-Right: {" << state.points[3].x << "f, "
             << state.points[3].y << "f}\n\n";
+
+  // Compute homography matrix and save to file
+  cv::Mat H = cv::getPerspectiveTransform(state.points, dst_pts);
+  save_extrinsic_calibration(output_path, state.points, dst_pts, H);
 
   return 0;
 }

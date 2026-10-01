@@ -7,12 +7,14 @@
 
 namespace adas::perception {
 
-// Return a vector of all the lanes present in the BEV image using configuration parameters
+// Return a vector of all the lanes present in the BEV image using configuration
+// parameters
 std::vector<adas::core::PolynomialLaneBoundary>
-detect_lanes(cv::Mat &bev,
-             const adas::config::PerceptionConfig &config = adas::config::PerceptionConfig{});
+detect_lanes(cv::Mat &bev, const adas::config::PerceptionConfig &config =
+                               adas::config::PerceptionConfig{});
 
-//Demo lane detection on given image
-int detect_lanes_demo(const adas::config::PerceptionConfig &config, cv::Mat ipm);
+// Demo lane detection on given image
+int detect_lanes_demo(const adas::config::PerceptionConfig &config,
+                      cv::Mat ipm);
 
 } // namespace adas::perception
