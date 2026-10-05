@@ -1,0 +1,15 @@
+{
+    "image_path": "assets/samples/cup_undistorted.jpg",
+    "intrinsics_path": "assets/calibration/intrinsic/emeet/emeet_intrinsics.xml",
+    "extrinsics_path": "config/calibration/emeet_extrinsics.xml",
+    "object_label": "cup",
+    "object_bbox_x": 784.9332,
+    "object_bbox_y": 700.7003,
+    "object_bbox_width": 191.6681,
+    "object_bbox_height": 192.0585,
+    "object_real_height": 0.089,
+    "min_inlier_count": 100,
+    "ransac_inlier_threshold": 50.0,
+    "ransac_iterations": 150,
+    "white_pixel_threshold": 150
+}

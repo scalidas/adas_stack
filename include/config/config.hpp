@@ -13,6 +13,12 @@ struct PerceptionConfig {
   float ransac_inlier_threshold{10.0f};
   int min_inlier_count{20};
   int white_pixel_threshold{180};
+  std::string object_label{"vehicle"};
+  float object_bbox_x{750.0f};
+  float object_bbox_y{420.0f};
+  float object_bbox_width{350.0f};
+  float object_bbox_height{240.0f};
+  double object_real_height{1.5};
 };
 
 inline void to_json(nlohmann::json &j, const PerceptionConfig &c) {
@@ -23,7 +29,13 @@ inline void to_json(nlohmann::json &j, const PerceptionConfig &c) {
       {"ransac_iterations", c.ransac_iterations},
       {"ransac_inlier_threshold", c.ransac_inlier_threshold},
       {"min_inlier_count", c.min_inlier_count},
-      {"white_pixel_threshold", c.white_pixel_threshold}};
+      {"white_pixel_threshold", c.white_pixel_threshold},
+      {"object_label", c.object_label},
+      {"object_bbox_x", c.object_bbox_x},
+      {"object_bbox_y", c.object_bbox_y},
+      {"object_bbox_width", c.object_bbox_width},
+      {"object_bbox_height", c.object_bbox_height},
+      {"object_real_height", c.object_real_height}};
 }
 
 inline void from_json(const nlohmann::json &j, PerceptionConfig &c) {
@@ -36,6 +48,12 @@ inline void from_json(const nlohmann::json &j, PerceptionConfig &c) {
   c.min_inlier_count = j.value("min_inlier_count", c.min_inlier_count);
   c.white_pixel_threshold =
       j.value("white_pixel_threshold", c.white_pixel_threshold);
+  c.object_label = j.value("object_label", c.object_label);
+  c.object_bbox_x = j.value("object_bbox_x", c.object_bbox_x);
+  c.object_bbox_y = j.value("object_bbox_y", c.object_bbox_y);
+  c.object_bbox_width = j.value("object_bbox_width", c.object_bbox_width);
+  c.object_bbox_height = j.value("object_bbox_height", c.object_bbox_height);
+  c.object_real_height = j.value("object_real_height", c.object_real_height);
 }
 
 // Load configuration from JSON file. If file does not exist, creates it with

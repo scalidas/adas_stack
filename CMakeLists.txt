@@ -17,6 +17,7 @@ find_package(nlohmann_json CONFIG REQUIRED)
 add_library(adas_stack_lib
     src/config/config.cpp
     src/perception/lane_detection.cpp
+    src/perception/road_object.cpp
     src/calibration/extrinsic_calibration.cpp
     src/calibration/intrinsic_calibration.cpp
 )

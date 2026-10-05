@@ -2,6 +2,7 @@
 #include "calibration/intrinsic_calibration.hpp"
 #include "config/config.hpp"
 #include "perception/lane_detection.hpp"
+#include "perception/road_object.hpp"
 #include <iostream>
 #include <opencv2/opencv.hpp>
 #include <string>
@@ -11,6 +12,7 @@ enum mode {
   INTRINSIC_CALIBRATION,
   EXTRINSIC_CALIBRATION,
   IMAGE_LANE_DEMO,
+  ROAD_OBJECT_DEMO,
 };
 
 int main(int argc, char **argv) {
@@ -45,6 +47,8 @@ int main(int argc, char **argv) {
     mode = EXTRINSIC_CALIBRATION;
   } else if (arg_mode == "detect_lane_demo") {
     mode = IMAGE_LANE_DEMO;
+  } else if (arg_mode == "road_object_demo" || arg_mode == "object_demo") {
+    mode = ROAD_OBJECT_DEMO;
   } else {
     std::cout << "Invalid mode selection" << std::endl;
     return -1;
@@ -96,6 +100,16 @@ int main(int argc, char **argv) {
     }
 
     return adas::perception::detect_lanes_demo(config, H);
+  }
+  case ROAD_OBJECT_DEMO: {
+    // Expect config file to be passed in
+    if (argc != 3) {
+      std::cout << "Usage: adas_stack road_object_demo <config_file>" << std::endl;
+      return -1;
+    }
+
+    std::string config_file = argv[2];
+    return adas::perception::run_road_object_demo(config_file);
   }
   }
 

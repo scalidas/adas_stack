@@ -1,0 +1,15 @@
+{
+    "image_path": "assets/calibration/intrinsic/emeet/WIN_20260930_19_16_16_Pro.jpg",
+    "intrinsics_path": "assets/calibration/intrinsic/emeet/emeet_intrinsics.xml",
+    "extrinsics_path": "config/calibration/emeet_extrinsics.xml",
+    "object_label": "vehicle",
+    "object_bbox_x": 750.0,
+    "object_bbox_y": 420.0,
+    "object_bbox_width": 350.0,
+    "object_bbox_height": 240.0,
+    "object_real_height": 1.5,
+    "min_inlier_count": 100,
+    "ransac_inlier_threshold": 50.0,
+    "ransac_iterations": 150,
+    "white_pixel_threshold": 150
+}

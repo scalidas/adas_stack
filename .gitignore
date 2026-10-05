@@ -21,6 +21,9 @@ compile_commands.json
 *.vcxproj
 *.vcxproj.filters
 
+# Python
+venv/
+
 # Temporary files
 *.swp
 *~

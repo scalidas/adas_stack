@@ -1,4 +1,5 @@
 #pragma once
+#include <opencv2/core/types.hpp>
 #include <optional>
 #include <string>
 #include <vector>
@@ -19,6 +20,13 @@ struct Vector3D {
   double x{0.0};
   double y{0.0};
   double z{0.0};
+};
+
+//Object detected through YOLO
+struct DetectedObject {
+  std::string label; // Type of object (vehicle, pedestrian...)
+  cv::Rect2f bounding_box;
+  float confidence{0.0f};
 };
 
 struct TrackedObject {
