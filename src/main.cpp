@@ -3,6 +3,7 @@
 #include "config/config.hpp"
 #include "perception/lane_detection.hpp"
 #include "perception/road_object.hpp"
+#include "yolo/opencv_dnn_engine.hpp"
 #include <iostream>
 #include <opencv2/opencv.hpp>
 #include <string>
@@ -13,6 +14,7 @@ enum mode {
   EXTRINSIC_CALIBRATION,
   IMAGE_LANE_DEMO,
   ROAD_OBJECT_DEMO,
+  YOLO_LIVE_DEMO,
 };
 
 int main(int argc, char **argv) {
@@ -49,6 +51,8 @@ int main(int argc, char **argv) {
     mode = IMAGE_LANE_DEMO;
   } else if (arg_mode == "road_object_demo" || arg_mode == "object_demo") {
     mode = ROAD_OBJECT_DEMO;
+  } else if (arg_mode == "yolo_live_demo") {
+    mode = YOLO_LIVE_DEMO;
   } else {
     std::cout << "Invalid mode selection" << std::endl;
     return -1;
@@ -68,13 +72,17 @@ int main(int argc, char **argv) {
   case EXTRINSIC_CALIBRATION: {
     // Expect image file to be passed in, optional output XML path
     if (argc < 3 || argc > 4) {
-      std::cout << "Usage: adas_stack extrinsic_calibration <image_file> [output_xml_path]" << std::endl;
+      std::cout << "Usage: adas_stack extrinsic_calibration <image_file> "
+                   "[output_xml_path]"
+                << std::endl;
       return -1;
     }
 
     std::string image_file = argv[2];
-    std::string output_file = (argc == 4) ? argv[3] : "config/calibration/extrinsic_calibration.xml";
-    return adas::calibration::run_extrinsic_calibration(image_file, output_file);
+    std::string output_file =
+        (argc == 4) ? argv[3] : "config/calibration/extrinsic_calibration.xml";
+    return adas::calibration::run_extrinsic_calibration(image_file,
+                                                        output_file);
   }
   case IMAGE_LANE_DEMO: {
     // Expect config file to be passed in
@@ -90,11 +98,13 @@ int main(int argc, char **argv) {
 
     cv::Mat H;
     if (!config.extrinsics_path.empty() &&
-        adas::calibration::load_extrinsic_calibration(config.extrinsics_path, H)) {
+        adas::calibration::load_extrinsic_calibration(config.extrinsics_path,
+                                                      H)) {
       std::cout << "[Main] Using loaded extrinsic homography matrix from: "
                 << config.extrinsics_path << std::endl;
     } else {
-      std::cout << "[Main] Extrinsic file not loaded. Falling back to default homography matrix."
+      std::cout << "[Main] Extrinsic file not loaded. Falling back to default "
+                   "homography matrix."
                 << std::endl;
       H = cv::getPerspectiveTransform(src_pts, dst_pts);
     }
@@ -104,12 +114,45 @@ int main(int argc, char **argv) {
   case ROAD_OBJECT_DEMO: {
     // Expect config file to be passed in
     if (argc != 3) {
-      std::cout << "Usage: adas_stack road_object_demo <config_file>" << std::endl;
+      std::cout << "Usage: adas_stack road_object_demo <config_file>"
+                << std::endl;
       return -1;
     }
 
     std::string config_file = argv[2];
     return adas::perception::run_road_object_demo(config_file);
+  }
+  case YOLO_LIVE_DEMO: {
+    // Expect config file containing model path, engine type, webcam id, intrinsics
+    if (argc != 3) {
+      std::cout << "Usage: adas_stack yolo_live_demo <config_file>"
+                << std::endl;
+      return -1;
+    }
+
+    std::string config_file = argv[2];
+    adas::config::PerceptionConfig config =
+        adas::config::load_config(config_file);
+
+    std::unique_ptr<InferenceEngine> engine;
+
+    // Instantiate correct DL backend
+    if (config.engine_type == "opencv") {
+      engine = std::make_unique<adas::yolo::OpenCVDNNEngine>();
+    } else {
+      std::cerr << "[Main] Unknown YOLO engine type: " << config.engine_type
+                << std::endl;
+      return -1;
+    }
+
+    // Load model and run live demo (with optional camera frame undistortion)
+    if (engine->loadModel(config.model_path)) {
+      engine->runLiveDemo(config.webcam_id, config.intrinsics_path);
+    } else {
+      std::cerr << "[Main] Failed to load YOLO model from: "
+                << config.model_path << std::endl;
+      return -1;
+    }
   }
   }
 

@@ -19,23 +19,30 @@ struct PerceptionConfig {
   float object_bbox_width{350.0f};
   float object_bbox_height{240.0f};
   double object_real_height{1.5};
+
+  // Deep Learning / YOLO fields (optional unless running DL demo)
+  std::string model_path{"models/yolov8n.onnx"};
+  std::string engine_type{"opencv"};
+  int webcam_id{0};
 };
 
 inline void to_json(nlohmann::json &j, const PerceptionConfig &c) {
-  j = nlohmann::json{
-      {"image_path", c.image_path},
-      {"intrinsics_path", c.intrinsics_path},
-      {"extrinsics_path", c.extrinsics_path},
-      {"ransac_iterations", c.ransac_iterations},
-      {"ransac_inlier_threshold", c.ransac_inlier_threshold},
-      {"min_inlier_count", c.min_inlier_count},
-      {"white_pixel_threshold", c.white_pixel_threshold},
-      {"object_label", c.object_label},
-      {"object_bbox_x", c.object_bbox_x},
-      {"object_bbox_y", c.object_bbox_y},
-      {"object_bbox_width", c.object_bbox_width},
-      {"object_bbox_height", c.object_bbox_height},
-      {"object_real_height", c.object_real_height}};
+  j = nlohmann::json{{"image_path", c.image_path},
+                     {"intrinsics_path", c.intrinsics_path},
+                     {"extrinsics_path", c.extrinsics_path},
+                     {"ransac_iterations", c.ransac_iterations},
+                     {"ransac_inlier_threshold", c.ransac_inlier_threshold},
+                     {"min_inlier_count", c.min_inlier_count},
+                     {"white_pixel_threshold", c.white_pixel_threshold},
+                     {"object_label", c.object_label},
+                     {"object_bbox_x", c.object_bbox_x},
+                     {"object_bbox_y", c.object_bbox_y},
+                     {"object_bbox_width", c.object_bbox_width},
+                     {"object_bbox_height", c.object_bbox_height},
+                     {"object_real_height", c.object_real_height},
+                     {"model_path", c.model_path},
+                     {"engine_type", c.engine_type},
+                     {"webcam_id", c.webcam_id}};
 }
 
 inline void from_json(const nlohmann::json &j, PerceptionConfig &c) {
@@ -54,6 +61,9 @@ inline void from_json(const nlohmann::json &j, PerceptionConfig &c) {
   c.object_bbox_width = j.value("object_bbox_width", c.object_bbox_width);
   c.object_bbox_height = j.value("object_bbox_height", c.object_bbox_height);
   c.object_real_height = j.value("object_real_height", c.object_real_height);
+  c.model_path = j.value("model_path", c.model_path);
+  c.engine_type = j.value("engine_type", c.engine_type);
+  c.webcam_id = j.value("webcam_id", c.webcam_id);
 }
 
 // Load configuration from JSON file. If file does not exist, creates it with

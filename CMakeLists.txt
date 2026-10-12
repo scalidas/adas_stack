@@ -20,10 +20,12 @@ add_library(adas_stack_lib
     src/perception/road_object.cpp
     src/calibration/extrinsic_calibration.cpp
     src/calibration/intrinsic_calibration.cpp
+    src/yolo/opencv_dnn_engine.cpp
 )
 
 target_include_directories(adas_stack_lib PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/external>
     $<INSTALL_INTERFACE:include>
 )
 
@@ -35,7 +37,7 @@ target_link_libraries(adas_stack_lib PUBLIC
 
 # Compiler Warnings
 if(MSVC)
-    target_compile_options(adas_stack_lib PRIVATE /W4)
+    target_compile_options(adas_stack_lib PRIVATE /W4 /bigobj /FS)
 else()
     target_compile_options(adas_stack_lib PRIVATE -Wall -Wextra -Wpedantic)
 endif()
@@ -46,3 +48,11 @@ add_executable(adas_stack
 )
 
 target_link_libraries(adas_stack PRIVATE adas_stack_lib)
+
+# Test Executable Target
+add_executable(test_opencv_dnn_engine
+    tests/test_opencv_dnn_engine.cpp
+)
+
+target_link_libraries(test_opencv_dnn_engine PRIVATE adas_stack_lib)
+

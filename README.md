@@ -10,6 +10,13 @@ cmake -B build
 cmake --build build --config Release
 ```
 
+#### Compile with Ninja (Windows)
+
+```
+cmake -G "Ninja" -DCMAKE_BUILD_TYPE=Release ..
+cmake --build build
+```
+
 #### Detect Lane
 
 ```
@@ -26,3 +33,7 @@ cmake --build build --config Release
 .\build\Release\adas_stack.exe extrinsic_calibration assets\calibration\phone_mounted_calibration.jpg
 ```
 
+#### Object Demo
+```
+.\build\Release\adas_stack.exe cup_demo_original --config config/cup_demo_original.json
+```

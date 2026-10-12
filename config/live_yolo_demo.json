@@ -1,0 +1,18 @@
+{
+    "image_path": "assets/calibration/PXL_20260921_201642411.jpg",
+    "intrinsics_path": "config/calibration/emeet_calibration.xml",
+    "extrinsics_path": "config/calibration/extrinsic_calibration.xml",
+    "ransac_iterations": 150,
+    "ransac_inlier_threshold": 10.0,
+    "min_inlier_count": 20,
+    "white_pixel_threshold": 180,
+    "object_label": "vehicle",
+    "object_bbox_x": 750.0,
+    "object_bbox_y": 420.0,
+    "object_bbox_width": 350.0,
+    "object_bbox_height": 240.0,
+    "object_real_height": 1.5,
+    "model_path": "models/yolov8n.onnx",
+    "engine_type": "opencv",
+    "webcam_id": 0
+}
