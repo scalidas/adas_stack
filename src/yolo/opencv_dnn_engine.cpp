@@ -4,6 +4,9 @@
 #include <fstream>
 #include <iostream>
 
+#include "config/config.hpp"
+#include "perception/road_object.hpp"
+
 namespace adas::yolo {
 
 namespace {
@@ -245,6 +248,7 @@ OpenCVDNNEngine::infer(const cv::Mat &frame) {
           static_cast<float>(bboxes[idx].height));
       obj.confidence = confidences[idx];
       int cid = class_ids[idx];
+      obj.class_id = cid;
       if (cid >= 0 && cid < static_cast<int>(active_classes.size())) {
         obj.label = active_classes[cid];
       } else {
@@ -263,39 +267,56 @@ OpenCVDNNEngine::infer(const cv::Mat &frame) {
   return detections;
 }
 
-bool OpenCVDNNEngine::runLiveDemo(int webcam_id,
-                                 const std::string &intrinsics_path) {
-  cv::VideoCapture cap(webcam_id);
+bool OpenCVDNNEngine::runLiveDemo(const adas::config::PerceptionConfig &config) {
+  cv::VideoCapture cap(config.webcam_id);
   if (!cap.isOpened()) {
     std::cerr << "[OpenCVDNNEngine] Error: Could not open webcam with ID "
-              << webcam_id << std::endl;
+              << config.webcam_id << std::endl;
     return false;
   }
 
   cv::Mat camera_matrix, dist_coeffs;
-  if (!intrinsics_path.empty()) {
-    cv::FileStorage fs(intrinsics_path, cv::FileStorage::READ);
+  int calib_w = 0;
+  int calib_h = 0;
+  double fx = 1056.46136;
+  double cx = 1017.33354;
+  double fy = 1063.57938;
+  double cy = 535.71139;
+
+  if (!config.intrinsics_path.empty()) {
+    cv::FileStorage fs(config.intrinsics_path, cv::FileStorage::READ);
     if (fs.isOpened()) {
       fs["camera_matrix"] >> camera_matrix;
       fs["distortion_coefficients"] >> dist_coeffs;
-      if (!camera_matrix.empty() && !dist_coeffs.empty()) {
+      fs["image_width"] >> calib_w;
+      fs["image_height"] >> calib_h;
+      if (!camera_matrix.empty()) {
+        fx = camera_matrix.at<double>(0, 0);
+        cx = camera_matrix.at<double>(0, 2);
+        fy = camera_matrix.at<double>(1, 1);
+        cy = camera_matrix.at<double>(1, 2);
         std::cout << "[OpenCVDNNEngine] Loaded camera intrinsics from: "
-                  << intrinsics_path << " for frame undistortion." << std::endl;
+                  << config.intrinsics_path << std::endl;
       } else {
-        std::cerr << "[OpenCVDNNEngine] Warning: Failed to read "
-                     "camera_matrix/distortion_coefficients from: "
-                  << intrinsics_path << std::endl;
+        std::cerr << "[OpenCVDNNEngine] Warning: Failed to read camera_matrix from: "
+                  << config.intrinsics_path << std::endl;
       }
     } else {
       std::cerr << "[OpenCVDNNEngine] Warning: Could not open intrinsics file: "
-                << intrinsics_path << std::endl;
+                << config.intrinsics_path << std::endl;
     }
   }
 
-  std::cout << "[OpenCVDNNEngine] Starting live webcam demo on device "
-            << webcam_id << ". Press 'q' or 'ESC' to exit." << std::endl;
+  // If calibration dimensions are known, request camera resolution to match
+  if (calib_w > 0 && calib_h > 0) {
+    cap.set(cv::CAP_PROP_FRAME_WIDTH, calib_w);
+    cap.set(cv::CAP_PROP_FRAME_HEIGHT, calib_h);
+  }
 
-  const std::string window_name = "YOLO Live Demo";
+  std::cout << "[OpenCVDNNEngine] Starting live webcam demo on device "
+            << config.webcam_id << ". Press 'q' or 'ESC' to exit." << std::endl;
+
+  const std::string window_name = "ADAS YOLO Live Demo";
   cv::namedWindow(window_name, cv::WINDOW_AUTOSIZE);
 
   cv::Mat raw_frame, frame;
@@ -307,40 +328,137 @@ bool OpenCVDNNEngine::runLiveDemo(int webcam_id,
       break;
     }
 
-    if (!camera_matrix.empty() && !dist_coeffs.empty()) {
-      cv::undistort(raw_frame, frame, camera_matrix, dist_coeffs);
+    // Adapt camera intrinsics if current frame resolution differs from calibration resolution
+    double cur_fx = fx;
+    double cur_cx = cx;
+    double cur_fy = fy;
+    double cur_cy = cy;
+    cv::Mat scaled_camera_matrix;
+
+    if (calib_w > 0 && calib_h > 0 &&
+        (raw_frame.cols != calib_w || raw_frame.rows != calib_h)) {
+      double sx = static_cast<double>(raw_frame.cols) / calib_w;
+      double sy = static_cast<double>(raw_frame.rows) / calib_h;
+      cur_fx = fx * sx;
+      cur_cx = cx * sx;
+      cur_fy = fy * sy;
+      cur_cy = cy * sy;
+      if (!camera_matrix.empty()) {
+        scaled_camera_matrix = camera_matrix.clone();
+        scaled_camera_matrix.at<double>(0, 0) *= sx;
+        scaled_camera_matrix.at<double>(0, 2) *= sx;
+        scaled_camera_matrix.at<double>(1, 1) *= sy;
+        scaled_camera_matrix.at<double>(1, 2) *= sy;
+      }
+    } else if (!camera_matrix.empty()) {
+      scaled_camera_matrix = camera_matrix.clone();
+    } else {
+      // Default fallback matrix if no calibration file is provided
+      cur_fx = 0.8 * raw_frame.cols;
+      cur_fy = 0.8 * raw_frame.cols;
+      cur_cx = raw_frame.cols / 2.0;
+      cur_cy = raw_frame.rows / 2.0;
+      scaled_camera_matrix = (cv::Mat_<double>(3, 3) << cur_fx, 0, cur_cx,
+                                                        0, cur_fy, cur_cy,
+                                                        0, 0, 1);
+    }
+
+    // Undistort frame if distortion coefficients are present
+    if (!scaled_camera_matrix.empty() && !dist_coeffs.empty()) {
+      cv::undistort(raw_frame, frame, scaled_camera_matrix, dist_coeffs);
     } else {
       frame = raw_frame;
     }
 
     auto detections = infer(frame);
 
+    size_t rendered_count = 0;
     for (const auto &obj : detections) {
-      // Draw bounding box
-      cv::rectangle(frame, obj.bounding_box, cv::Scalar(0, 255, 0), 2);
-
-      // Create label string
-      std::string label = obj.label;
-      if (obj.confidence > 0.0f) {
-        label += " " + cv::format("%.2f", obj.confidence);
+      // Filter out detections not present in target_class_ids (if specified)
+      if (!config.target_class_ids.empty()) {
+        if (std::find(config.target_class_ids.begin(), config.target_class_ids.end(),
+                      obj.class_id) == config.target_class_ids.end()) {
+          continue;
+        }
       }
 
-      int baseLine = 0;
-      cv::Size label_size =
-          cv::getTextSize(label, cv::FONT_HERSHEY_SIMPLEX, 0.5, 1, &baseLine);
+      // Determine real physical height in meters for pinhole depth deprojection
+      double real_height = config.object_real_height;
+      if (config.class_real_heights.count(obj.class_id)) {
+        real_height = config.class_real_heights.at(obj.class_id);
+      } else {
+        // COCO default physical object heights in meters
+        switch (obj.class_id) {
+          case 0:  real_height = 1.70; break; // person
+          case 1:  real_height = 1.00; break; // bicycle
+          case 2:  real_height = 1.50; break; // car
+          case 3:  real_height = 1.20; break; // motorcycle
+          case 5:  real_height = 3.20; break; // bus
+          case 7:  real_height = 3.00; break; // truck
+          case 9:  real_height = 0.80; break; // traffic light
+          case 11: real_height = 0.75; break; // stop sign
+          case 39: real_height = 0.25; break; // bottle
+          case 41: real_height = 0.10; break; // cup
+          default:
+            real_height = config.object_real_height;
+            break;
+        }
+      }
 
-      int top = std::max(static_cast<int>(obj.bounding_box.y),
-                         label_size.height);
-      int left = static_cast<int>(obj.bounding_box.x);
+      // Run depth deprojection and 3D pose calculation using RoadObject
+      adas::perception::RoadObject road_obj(obj, real_height, cur_fy, cur_fx, cur_cx, cur_cy);
+      adas::core::TrackedObject tracked = road_obj.process();
 
-      cv::rectangle(
-          frame, cv::Point(left, top - label_size.height - 2),
-          cv::Point(left + label_size.width, top + baseLine),
-          cv::Scalar(0, 255, 0), cv::FILLED);
+      // Bounding box
+      cv::Rect bbox_int(
+          static_cast<int>(obj.bounding_box.x),
+          static_cast<int>(obj.bounding_box.y),
+          static_cast<int>(obj.bounding_box.width),
+          static_cast<int>(obj.bounding_box.height));
+      cv::rectangle(frame, bbox_int, cv::Scalar(0, 255, 0), 2);
 
-      cv::putText(frame, label, cv::Point(left, top), cv::FONT_HERSHEY_SIMPLEX,
-                  0.5, cv::Scalar(0, 0, 0), 1);
+      // Format text overlays
+      std::string line1 = cv::format("%s %.2f | Depth: %.2fm",
+                                     obj.label.c_str(), obj.confidence, tracked.position.x);
+      std::string line2 = cv::format("Pose: [X=%.2f, Y=%.2f, Z=%.2f]m",
+                                     tracked.position.y, tracked.position.z, tracked.position.x);
+
+      int font = cv::FONT_HERSHEY_SIMPLEX;
+      double scale = 0.45;
+      int thick = 1;
+      int b1 = 0, b2 = 0;
+      cv::Size s1 = cv::getTextSize(line1, font, scale, thick, &b1);
+      cv::Size s2 = cv::getTextSize(line2, font, scale, thick, &b2);
+      int banner_w = std::max(s1.width, s2.width) + 8;
+      int banner_h = s1.height + s2.height + 8;
+
+      int banner_x = std::clamp(bbox_int.x, 0, std::max(0, frame.cols - banner_w));
+      int banner_y = std::max(banner_h + 2, bbox_int.y);
+
+      // Render solid background banner for high-contrast readability
+      cv::rectangle(frame,
+                    cv::Point(banner_x, banner_y - banner_h),
+                    cv::Point(banner_x + banner_w, banner_y),
+                    cv::Scalar(25, 25, 25), cv::FILLED);
+
+      // Draw Depth & Label line (bright green)
+      cv::putText(frame, line1,
+                  cv::Point(banner_x + 4, banner_y - s2.height - 4),
+                  font, scale, cv::Scalar(0, 255, 0), thick);
+
+      // Draw 3D Coordinates line (yellow/cyan)
+      cv::putText(frame, line2,
+                  cv::Point(banner_x + 4, banner_y - 2),
+                  font, scale, cv::Scalar(0, 255, 255), thick);
+
+      rendered_count++;
     }
+
+    // Display HUD at top of screen
+    std::string hud = cv::format("Tracked Objects: %zu (Filtered from %zu detections) | 'q'/ESC to exit",
+                                 rendered_count, detections.size());
+    cv::putText(frame, hud, cv::Point(15, 25),
+                cv::FONT_HERSHEY_SIMPLEX, 0.55, cv::Scalar(0, 255, 255), 2);
 
     cv::imshow(window_name, frame);
 
@@ -353,6 +471,14 @@ bool OpenCVDNNEngine::runLiveDemo(int webcam_id,
 
   cv::destroyWindow(window_name);
   return true;
+}
+
+bool OpenCVDNNEngine::runLiveDemo(int webcam_id,
+                                 const std::string &intrinsics_path) {
+  adas::config::PerceptionConfig config;
+  config.webcam_id = webcam_id;
+  config.intrinsics_path = intrinsics_path;
+  return runLiveDemo(config);
 }
 
 } // namespace adas::yolo

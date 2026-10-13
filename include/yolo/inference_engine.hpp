@@ -5,6 +5,7 @@
 #include <vector>
 
 
+#include "config/config.hpp"
 #include "core/core_types.hpp"
 
 namespace adas::yolo {
@@ -15,6 +16,7 @@ public:
   virtual bool loadModel(const std::string &model_path) = 0;
   virtual std::vector<adas::core::DetectedObject>
   infer(const cv::Mat &frame) = 0;
+  virtual bool runLiveDemo(const adas::config::PerceptionConfig &config) = 0;
   virtual bool runLiveDemo(int webcam_id = 0,
                            const std::string &intrinsics_path = "") = 0;
 };

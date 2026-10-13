@@ -38,6 +38,16 @@ int main() {
     assert(concrete_engine.getNMSThreshold() == 0.5f);
     std::cout << "[Test] Setter and getter tests passed." << std::endl;
 
+    // 6. Test DetectedObject class_id field and PerceptionConfig target_class_ids
+    adas::core::DetectedObject test_obj;
+    test_obj.class_id = 2;
+    test_obj.label = "car";
+    assert(test_obj.class_id == 2);
+
+    adas::config::PerceptionConfig test_config;
+    assert(!test_config.target_class_ids.empty());
+    std::cout << "[Test] PerceptionConfig target_class_ids and DetectedObject class_id tests passed." << std::endl;
+
     std::cout << "[Test] ALL TESTS PASSED SUCCESSFULLY!" << std::endl;
     return 0;
 }

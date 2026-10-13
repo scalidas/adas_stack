@@ -21,6 +21,7 @@ public:
   bool loadModel(const std::string &model_path) override;
   std::vector<adas::core::DetectedObject>
   infer(const cv::Mat &frame) override;
+  bool runLiveDemo(const adas::config::PerceptionConfig &config) override;
   bool runLiveDemo(int webcam_id = 0,
                    const std::string &intrinsics_path = "") override;
 

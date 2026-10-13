@@ -1,7 +1,9 @@
 #pragma once
 
+#include <map>
 #include <nlohmann/json.hpp>
 #include <string>
+#include <vector>
 
 namespace adas::config {
 
@@ -24,6 +26,8 @@ struct PerceptionConfig {
   std::string model_path{"models/yolov8n.onnx"};
   std::string engine_type{"opencv"};
   int webcam_id{0};
+  std::vector<int> target_class_ids{0, 2, 3, 5, 7};
+  std::map<int, double> class_real_heights;
 };
 
 inline void to_json(nlohmann::json &j, const PerceptionConfig &c) {
@@ -42,7 +46,15 @@ inline void to_json(nlohmann::json &j, const PerceptionConfig &c) {
                      {"object_real_height", c.object_real_height},
                      {"model_path", c.model_path},
                      {"engine_type", c.engine_type},
-                     {"webcam_id", c.webcam_id}};
+                     {"webcam_id", c.webcam_id},
+                     {"target_class_ids", c.target_class_ids}};
+  if (!c.class_real_heights.empty()) {
+    nlohmann::json crh = nlohmann::json::object();
+    for (const auto &[k, v] : c.class_real_heights) {
+      crh[std::to_string(k)] = v;
+    }
+    j["class_real_heights"] = crh;
+  }
 }
 
 inline void from_json(const nlohmann::json &j, PerceptionConfig &c) {
@@ -64,6 +76,22 @@ inline void from_json(const nlohmann::json &j, PerceptionConfig &c) {
   c.model_path = j.value("model_path", c.model_path);
   c.engine_type = j.value("engine_type", c.engine_type);
   c.webcam_id = j.value("webcam_id", c.webcam_id);
+
+  if (j.contains("target_class_ids")) {
+    c.target_class_ids = j["target_class_ids"].get<std::vector<int>>();
+  } else if (j.contains("target_coco_ids")) {
+    c.target_class_ids = j["target_coco_ids"].get<std::vector<int>>();
+  }
+
+  if (j.contains("class_real_heights") && j["class_real_heights"].is_object()) {
+    c.class_real_heights.clear();
+    for (auto &[key, val] : j["class_real_heights"].items()) {
+      try {
+        int cid = std::stoi(key);
+        c.class_real_heights[cid] = val.get<double>();
+      } catch (...) {}
+    }
+  }
 }
 
 // Load configuration from JSON file. If file does not exist, creates it with

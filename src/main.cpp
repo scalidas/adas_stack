@@ -145,9 +145,9 @@ int main(int argc, char **argv) {
       return -1;
     }
 
-    // Load model and run live demo (with optional camera frame undistortion)
+    // Load model and run live demo (with road_object 3D deprojection and class filtering)
     if (engine->loadModel(config.model_path)) {
-      engine->runLiveDemo(config.webcam_id, config.intrinsics_path);
+      engine->runLiveDemo(config);
     } else {
       std::cerr << "[Main] Failed to load YOLO model from: "
                 << config.model_path << std::endl;

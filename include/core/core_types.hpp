@@ -27,6 +27,7 @@ struct DetectedObject {
   std::string label; // Type of object (vehicle, pedestrian...)
   cv::Rect2f bounding_box;
   float confidence{0.0f};
+  int class_id{-1};
 };
 
 struct TrackedObject {

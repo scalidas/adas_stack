@@ -1,6 +1,6 @@
 {
     "image_path": "assets/calibration/PXL_20260921_201642411.jpg",
-    "intrinsics_path": "config/calibration/emeet_calibration.xml",
+    "intrinsics_path": "assets/calibration/intrinsic/emeet/emeet_intrinsics.xml",
     "extrinsics_path": "config/calibration/extrinsic_calibration.xml",
     "ransac_iterations": 150,
     "ransac_inlier_threshold": 10.0,
@@ -14,5 +14,11 @@
     "object_real_height": 1.5,
     "model_path": "models/yolov8n.onnx",
     "engine_type": "opencv",
-    "webcam_id": 0
+    "webcam_id": 0,
+    "target_class_ids": [
+        39
+    ],
+    "class_real_heights": {
+        "39": 0.2
+    }
 }
