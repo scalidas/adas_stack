@@ -2,6 +2,13 @@
 
 #include "core/core_types.hpp"
 #include <nlohmann/json.hpp>
+#ifndef ASIO_STANDALONE
+#define ASIO_STANDALONE
+#endif
+#ifndef _WEBSOCKETPP_CPP11_STL_
+#define _WEBSOCKETPP_CPP11_STL_
+#endif
+
 #include <websocketpp/config/asio_no_tls.hpp>
 #include <websocketpp/server.hpp>
 

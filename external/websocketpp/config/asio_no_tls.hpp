@@ -67,6 +67,8 @@ struct asio : public core {
         transport_type;
 };
 
+typedef asio asio_no_tls;
+
 } // namespace config
 } // namespace websocketpp
 
