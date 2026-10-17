@@ -22,10 +22,11 @@ struct Vector3D {
   double z{0.0};
 };
 
-//Object detected through YOLO
+// Object detected through YOLO
 struct DetectedObject {
   std::string label; // Type of object (vehicle, pedestrian...)
   cv::Rect2f bounding_box;
+  Vector3D position; // Deprojected pose estimation
   float confidence{0.0f};
   int class_id{-1};
 };
@@ -33,6 +34,7 @@ struct DetectedObject {
 struct TrackedObject {
   int id{-1};
   std::string label; // Type of object (vehicle, pedestrian...)
+  cv::Rect2f bounding_box;
   Vector3D position; // position of the center - in the frame of the vehicle
   Vector3D velocity; // velocity of the object relative to vehicle
   double length{0.0};
@@ -64,7 +66,7 @@ struct Lane {
   PolynomialLaneBoundary right_boundary;
   PolynomialLaneBoundary centerline;
   double lane_width{0.50};
-  
+
   // For now, based purely on whether it is a dotted line or not
   bool can_change_left{true};
   bool can_change_right{true};

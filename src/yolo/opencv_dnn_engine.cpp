@@ -6,36 +6,9 @@
 
 #include "config/config.hpp"
 #include "perception/road_object.hpp"
+#include "yolo/inference_engine.hpp"
 
 namespace adas::yolo {
-
-namespace {
-// Standard 80 COCO class names for YOLO models
-const std::vector<std::string> &getDefaultCOCOClasses() {
-  static const std::vector<std::string> coco_classes = {
-      "person",        "bicycle",       "car",           "motorcycle",
-      "airplane",      "bus",           "train",         "truck",
-      "boat",          "traffic light", "fire hydrant",  "stop sign",
-      "parking meter", "bench",         "bird",          "cat",
-      "dog",           "horse",         "sheep",         "cow",
-      "elephant",      "bear",          "zebra",         "giraffe",
-      "backpack",      "umbrella",      "handbag",       "tie",
-      "suitcase",      "frisbee",       "skis",          "snowboard",
-      "sports ball",   "kite",          "baseball bat",  "baseball glove",
-      "skateboard",    "surfboard",     "tennis racket", "bottle",
-      "wine glass",    "cup",           "fork",          "knife",
-      "spoon",         "bowl",          "banana",        "apple",
-      "sandwich",      "orange",        "broccoli",      "carrot",
-      "hot dog",       "pizza",         "donut",         "cake",
-      "chair",         "couch",         "potted plant",  "bed",
-      "dining table",  "toilet",        "tv",            "laptop",
-      "mouse",         "remote",        "keyboard",      "cell phone",
-      "microwave",     "oven",          "toaster",       "sink",
-      "refrigerator",  "book",          "clock",         "vase",
-      "scissors",      "teddy bear",    "hair drier",    "toothbrush"};
-  return coco_classes;
-}
-} // namespace
 
 OpenCVDNNEngine::OpenCVDNNEngine(const std::string &model_path,
                                  float conf_threshold, float nms_threshold)
@@ -90,6 +63,28 @@ void OpenCVDNNEngine::setInputSize(int width, int height) {
 
 void OpenCVDNNEngine::setClasses(const std::vector<std::string> &classes) {
   classes_ = classes;
+  target_class_ids_.clear();
+  for (const auto &name : classes) {
+    auto it = std::find(coco_classes.begin(), coco_classes.end(), name);
+    if (it != coco_classes.end()) {
+      target_class_ids_.push_back(
+          static_cast<int>(std::distance(coco_classes.begin(), it)));
+    }
+  }
+}
+
+void OpenCVDNNEngine::setClasses(const std::vector<int> &classes) {
+  target_class_ids_ = classes;
+  classes_.clear();
+  for (auto idx : classes) {
+    if (idx >= 0 && idx < static_cast<int>(coco_classes.size())) {
+      classes_.push_back(coco_classes[idx]);
+    }
+  }
+}
+
+const std::vector<int> &OpenCVDNNEngine::getTargetClassIds() const {
+  return target_class_ids_;
 }
 
 bool OpenCVDNNEngine::isLoaded() const { return is_loaded_; }
@@ -99,6 +94,71 @@ float OpenCVDNNEngine::getConfidenceThreshold() const {
 }
 
 float OpenCVDNNEngine::getNMSThreshold() const { return nms_threshold_; }
+
+void OpenCVDNNEngine::setCameraIntrinsics(double fx, double fy, double cx,
+                                         double cy, int calib_w, int calib_h) {
+  fx_ = fx;
+  fy_ = fy;
+  cx_ = cx;
+  cy_ = cy;
+  calib_w_ = calib_w;
+  calib_h_ = calib_h;
+  has_calibration_ = true;
+  camera_matrix_ =
+      (cv::Mat_<double>(3, 3) << fx_, 0, cx_, 0, fy_, cy_, 0, 0, 1);
+}
+
+bool OpenCVDNNEngine::loadCameraIntrinsics(const std::string &intrinsics_path) {
+  if (intrinsics_path.empty()) {
+    return false;
+  }
+  cv::FileStorage fs(intrinsics_path, cv::FileStorage::READ);
+  if (!fs.isOpened()) {
+    std::cerr << "[OpenCVDNNEngine] Warning: Could not open intrinsics file: "
+              << intrinsics_path << std::endl;
+    return false;
+  }
+  fs["camera_matrix"] >> camera_matrix_;
+  fs["distortion_coefficients"] >> dist_coeffs_;
+  fs["image_width"] >> calib_w_;
+  fs["image_height"] >> calib_h_;
+  if (!camera_matrix_.empty() && camera_matrix_.rows >= 3 &&
+      camera_matrix_.cols >= 3) {
+    fx_ = camera_matrix_.at<double>(0, 0);
+    cx_ = camera_matrix_.at<double>(0, 2);
+    fy_ = camera_matrix_.at<double>(1, 1);
+    cy_ = camera_matrix_.at<double>(1, 2);
+    has_calibration_ = true;
+    std::cout << "[OpenCVDNNEngine] Loaded camera intrinsics from: "
+              << intrinsics_path << std::endl;
+    return true;
+  }
+  std::cerr << "[OpenCVDNNEngine] Warning: Failed to read camera_matrix from: "
+            << intrinsics_path << std::endl;
+  return false;
+}
+
+void OpenCVDNNEngine::setObjectRealHeight(double height) {
+  default_real_height_ = height;
+}
+
+void OpenCVDNNEngine::setClassRealHeights(
+    const std::map<int, double> &heights) {
+  class_real_heights_ = heights;
+}
+
+double OpenCVDNNEngine::getFx() const { return fx_; }
+double OpenCVDNNEngine::getFy() const { return fy_; }
+double OpenCVDNNEngine::getCx() const { return cx_; }
+double OpenCVDNNEngine::getCy() const { return cy_; }
+int OpenCVDNNEngine::getCalibWidth() const { return calib_w_; }
+int OpenCVDNNEngine::getCalibHeight() const { return calib_h_; }
+double OpenCVDNNEngine::getObjectRealHeight() const {
+  return default_real_height_;
+}
+const std::map<int, double> &OpenCVDNNEngine::getClassRealHeights() const {
+  return class_real_heights_;
+}
 
 std::vector<adas::core::DetectedObject>
 OpenCVDNNEngine::infer(const cv::Mat &frame) {
@@ -123,8 +183,6 @@ OpenCVDNNEngine::infer(const cv::Mat &frame) {
       return detections;
     }
 
-    const auto &active_classes =
-        classes_.empty() ? getDefaultCOCOClasses() : classes_;
 
     std::vector<cv::Rect2d> bboxes;
     std::vector<float> confidences;
@@ -240,20 +298,85 @@ OpenCVDNNEngine::infer(const cv::Mat &frame) {
     cv::dnn::NMSBoxes(bboxes, confidences, conf_threshold_, nms_threshold_,
                       nms_indices);
 
+    // Adapt camera intrinsics if frame resolution differs from calibration resolution
+    double cur_fx = fx_;
+    double cur_cx = cx_;
+    double cur_fy = fy_;
+    double cur_cy = cy_;
+
+    if (calib_w_ > 0 && calib_h_ > 0 &&
+        (frame.cols != calib_w_ || frame.rows != calib_h_)) {
+      double sx = static_cast<double>(frame.cols) / calib_w_;
+      double sy = static_cast<double>(frame.rows) / calib_h_;
+      cur_fx = fx_ * sx;
+      cur_cx = cx_ * sx;
+      cur_fy = fy_ * sy;
+      cur_cy = cy_ * sy;
+    } else if (!has_calibration_) {
+      // Default fallback matrix if no calibration is provided
+      cur_fx = 0.8 * frame.cols;
+      cur_fy = 0.8 * frame.cols;
+      cur_cx = frame.cols / 2.0;
+      cur_cy = frame.rows / 2.0;
+    }
+
     for (int idx : nms_indices) {
+      int cid = class_ids[idx];
+
+      // Filter out detections not present in target_class_ids_ (if specified)
+      if (!target_class_ids_.empty()) {
+        if (std::find(target_class_ids_.begin(), target_class_ids_.end(), cid) ==
+            target_class_ids_.end()) {
+          continue;
+        }
+      }
+
       adas::core::DetectedObject obj;
       obj.bounding_box = cv::Rect2f(
           static_cast<float>(bboxes[idx].x), static_cast<float>(bboxes[idx].y),
           static_cast<float>(bboxes[idx].width),
           static_cast<float>(bboxes[idx].height));
       obj.confidence = confidences[idx];
-      int cid = class_ids[idx];
       obj.class_id = cid;
-      if (cid >= 0 && cid < static_cast<int>(active_classes.size())) {
-        obj.label = active_classes[cid];
+
+      if (classes_.size() == coco_classes.size() &&
+          cid >= 0 && cid < static_cast<int>(classes_.size())) {
+        obj.label = classes_[cid];
+      } else if (cid >= 0 && cid < static_cast<int>(coco_classes.size())) {
+        obj.label = coco_classes[cid];
       } else {
         obj.label = "class_" + std::to_string(cid);
       }
+
+      // Determine real physical height in meters for pinhole depth deprojection
+      double real_height = default_real_height_;
+      if (class_real_heights_.count(cid)) {
+        real_height = class_real_heights_.at(cid);
+      } else {
+        // COCO default physical object heights in meters
+        switch (cid) {
+          case 0:  real_height = 1.70; break; // person
+          case 1:  real_height = 1.00; break; // bicycle
+          case 2:  real_height = 1.50; break; // car
+          case 3:  real_height = 1.20; break; // motorcycle
+          case 5:  real_height = 3.20; break; // bus
+          case 7:  real_height = 3.00; break; // truck
+          case 9:  real_height = 0.80; break; // traffic light
+          case 11: real_height = 0.75; break; // stop sign
+          case 39: real_height = 0.25; break; // bottle
+          case 41: real_height = 0.10; break; // cup
+          default:
+            real_height = default_real_height_;
+            break;
+        }
+      }
+
+      // Populate position field of DetectedObject by pinhole camera equations
+      if (obj.bounding_box.height > 0.0f) {
+        adas::perception::RoadObject road_obj(obj, real_height, cur_fy, cur_fx, cur_cx, cur_cy);
+        obj.position = road_obj.process().position;
+      }
+
       detections.push_back(obj);
     }
   } catch (const cv::Exception &e) {
@@ -275,42 +398,25 @@ bool OpenCVDNNEngine::runLiveDemo(const adas::config::PerceptionConfig &config) 
     return false;
   }
 
-  cv::Mat camera_matrix, dist_coeffs;
-  int calib_w = 0;
-  int calib_h = 0;
-  double fx = 1056.46136;
-  double cx = 1017.33354;
-  double fy = 1063.57938;
-  double cy = 535.71139;
+  default_real_height_ = config.object_real_height;
+  class_real_heights_ = config.class_real_heights;
+  if (!config.target_class_ids.empty()) {
+    setClasses(config.target_class_ids);
+  }
 
   if (!config.intrinsics_path.empty()) {
-    cv::FileStorage fs(config.intrinsics_path, cv::FileStorage::READ);
-    if (fs.isOpened()) {
-      fs["camera_matrix"] >> camera_matrix;
-      fs["distortion_coefficients"] >> dist_coeffs;
-      fs["image_width"] >> calib_w;
-      fs["image_height"] >> calib_h;
-      if (!camera_matrix.empty()) {
-        fx = camera_matrix.at<double>(0, 0);
-        cx = camera_matrix.at<double>(0, 2);
-        fy = camera_matrix.at<double>(1, 1);
-        cy = camera_matrix.at<double>(1, 2);
-        std::cout << "[OpenCVDNNEngine] Loaded camera intrinsics from: "
-                  << config.intrinsics_path << std::endl;
-      } else {
-        std::cerr << "[OpenCVDNNEngine] Warning: Failed to read camera_matrix from: "
-                  << config.intrinsics_path << std::endl;
-      }
-    } else {
-      std::cerr << "[OpenCVDNNEngine] Warning: Could not open intrinsics file: "
-                << config.intrinsics_path << std::endl;
+    if (!loadCameraIntrinsics(config.intrinsics_path)) {
+      std::cerr << "[OpenCVDNNEngine] Warning: Falling back to default intrinsics."
+                << std::endl;
     }
+  } else {
+    has_calibration_ = false;
   }
 
   // If calibration dimensions are known, request camera resolution to match
-  if (calib_w > 0 && calib_h > 0) {
-    cap.set(cv::CAP_PROP_FRAME_WIDTH, calib_w);
-    cap.set(cv::CAP_PROP_FRAME_HEIGHT, calib_h);
+  if (calib_w_ > 0 && calib_h_ > 0) {
+    cap.set(cv::CAP_PROP_FRAME_WIDTH, calib_w_);
+    cap.set(cv::CAP_PROP_FRAME_HEIGHT, calib_h_);
   }
 
   std::cout << "[OpenCVDNNEngine] Starting live webcam demo on device "
@@ -329,29 +435,29 @@ bool OpenCVDNNEngine::runLiveDemo(const adas::config::PerceptionConfig &config) 
     }
 
     // Adapt camera intrinsics if current frame resolution differs from calibration resolution
-    double cur_fx = fx;
-    double cur_cx = cx;
-    double cur_fy = fy;
-    double cur_cy = cy;
+    double cur_fx = fx_;
+    double cur_cx = cx_;
+    double cur_fy = fy_;
+    double cur_cy = cy_;
     cv::Mat scaled_camera_matrix;
 
-    if (calib_w > 0 && calib_h > 0 &&
-        (raw_frame.cols != calib_w || raw_frame.rows != calib_h)) {
-      double sx = static_cast<double>(raw_frame.cols) / calib_w;
-      double sy = static_cast<double>(raw_frame.rows) / calib_h;
-      cur_fx = fx * sx;
-      cur_cx = cx * sx;
-      cur_fy = fy * sy;
-      cur_cy = cy * sy;
-      if (!camera_matrix.empty()) {
-        scaled_camera_matrix = camera_matrix.clone();
+    if (calib_w_ > 0 && calib_h_ > 0 &&
+        (raw_frame.cols != calib_w_ || raw_frame.rows != calib_h_)) {
+      double sx = static_cast<double>(raw_frame.cols) / calib_w_;
+      double sy = static_cast<double>(raw_frame.rows) / calib_h_;
+      cur_fx = fx_ * sx;
+      cur_cx = cx_ * sx;
+      cur_fy = fy_ * sy;
+      cur_cy = cy_ * sy;
+      if (!camera_matrix_.empty()) {
+        scaled_camera_matrix = camera_matrix_.clone();
         scaled_camera_matrix.at<double>(0, 0) *= sx;
         scaled_camera_matrix.at<double>(0, 2) *= sx;
         scaled_camera_matrix.at<double>(1, 1) *= sy;
         scaled_camera_matrix.at<double>(1, 2) *= sy;
       }
-    } else if (!camera_matrix.empty()) {
-      scaled_camera_matrix = camera_matrix.clone();
+    } else if (!camera_matrix_.empty()) {
+      scaled_camera_matrix = camera_matrix_.clone();
     } else {
       // Default fallback matrix if no calibration file is provided
       cur_fx = 0.8 * raw_frame.cols;
@@ -364,8 +470,8 @@ bool OpenCVDNNEngine::runLiveDemo(const adas::config::PerceptionConfig &config) 
     }
 
     // Undistort frame if distortion coefficients are present
-    if (!scaled_camera_matrix.empty() && !dist_coeffs.empty()) {
-      cv::undistort(raw_frame, frame, scaled_camera_matrix, dist_coeffs);
+    if (!scaled_camera_matrix.empty() && !dist_coeffs_.empty()) {
+      cv::undistort(raw_frame, frame, scaled_camera_matrix, dist_coeffs_);
     } else {
       frame = raw_frame;
     }
@@ -382,33 +488,6 @@ bool OpenCVDNNEngine::runLiveDemo(const adas::config::PerceptionConfig &config) 
         }
       }
 
-      // Determine real physical height in meters for pinhole depth deprojection
-      double real_height = config.object_real_height;
-      if (config.class_real_heights.count(obj.class_id)) {
-        real_height = config.class_real_heights.at(obj.class_id);
-      } else {
-        // COCO default physical object heights in meters
-        switch (obj.class_id) {
-          case 0:  real_height = 1.70; break; // person
-          case 1:  real_height = 1.00; break; // bicycle
-          case 2:  real_height = 1.50; break; // car
-          case 3:  real_height = 1.20; break; // motorcycle
-          case 5:  real_height = 3.20; break; // bus
-          case 7:  real_height = 3.00; break; // truck
-          case 9:  real_height = 0.80; break; // traffic light
-          case 11: real_height = 0.75; break; // stop sign
-          case 39: real_height = 0.25; break; // bottle
-          case 41: real_height = 0.10; break; // cup
-          default:
-            real_height = config.object_real_height;
-            break;
-        }
-      }
-
-      // Run depth deprojection and 3D pose calculation using RoadObject
-      adas::perception::RoadObject road_obj(obj, real_height, cur_fy, cur_fx, cur_cx, cur_cy);
-      adas::core::TrackedObject tracked = road_obj.process();
-
       // Bounding box
       cv::Rect bbox_int(
           static_cast<int>(obj.bounding_box.x),
@@ -417,11 +496,11 @@ bool OpenCVDNNEngine::runLiveDemo(const adas::config::PerceptionConfig &config) 
           static_cast<int>(obj.bounding_box.height));
       cv::rectangle(frame, bbox_int, cv::Scalar(0, 255, 0), 2);
 
-      // Format text overlays
+      // Format text overlays using position populated by infer()
       std::string line1 = cv::format("%s %.2f | Depth: %.2fm",
-                                     obj.label.c_str(), obj.confidence, tracked.position.x);
+                                     obj.label.c_str(), obj.confidence, obj.position.x);
       std::string line2 = cv::format("Pose: [X=%.2f, Y=%.2f, Z=%.2f]m",
-                                     tracked.position.y, tracked.position.z, tracked.position.x);
+                                     obj.position.y, obj.position.z, obj.position.x);
 
       int font = cv::FONT_HERSHEY_SIMPLEX;
       double scale = 0.45;
