@@ -13,5 +13,9 @@
     ],
     "class_real_heights": {
         "39": 0.2
-    }
+    },
+    "enable_webserver": true,
+    "webserver_port": 9002,
+    "webserver_host": "0.0.0.0",
+    "webserver_logging": false
 }

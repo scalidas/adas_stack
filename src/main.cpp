@@ -56,7 +56,7 @@ int main(int argc, char** argv) {
         mode = ROAD_OBJECT_DEMO;
     } else if (arg_mode == "yolo_live_demo") {
         mode = YOLO_LIVE_DEMO;
-    } else if (arg_mode == "perception_demo") {
+    } else if (arg_mode == "perception_demo" || arg_mode == "live_perception_demo") {
         mode = PERCEPTION_DEMO;
     } else {
         std::cout << "Invalid mode selection" << std::endl;

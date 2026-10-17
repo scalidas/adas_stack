@@ -28,6 +28,16 @@ struct PerceptionConfig {
   int webcam_id{0};
   std::vector<int> target_class_ids{0, 2, 3, 5, 7};
   std::map<int, double> class_real_heights;
+
+  // Webserver / Streaming fields
+  bool enable_webserver{false};
+  bool enable_streaming{false};
+  uint16_t webserver_port{9002};
+  uint16_t streaming_port{9002};
+  std::string webserver_host{"0.0.0.0"};
+  std::string streaming_host{"0.0.0.0"};
+  bool webserver_logging{false};
+  bool streaming_logging{false};
 };
 
 inline void to_json(nlohmann::json &j, const PerceptionConfig &c) {
@@ -47,7 +57,11 @@ inline void to_json(nlohmann::json &j, const PerceptionConfig &c) {
                      {"model_path", c.model_path},
                      {"engine_type", c.engine_type},
                      {"webcam_id", c.webcam_id},
-                     {"target_class_ids", c.target_class_ids}};
+                     {"target_class_ids", c.target_class_ids},
+                     {"enable_webserver", c.enable_webserver},
+                     {"webserver_port", c.webserver_port},
+                     {"webserver_host", c.webserver_host},
+                     {"webserver_logging", c.webserver_logging}};
   if (!c.class_real_heights.empty()) {
     nlohmann::json crh = nlohmann::json::object();
     for (const auto &[k, v] : c.class_real_heights) {
@@ -76,6 +90,47 @@ inline void from_json(const nlohmann::json &j, PerceptionConfig &c) {
   c.model_path = j.value("model_path", c.model_path);
   c.engine_type = j.value("engine_type", c.engine_type);
   c.webcam_id = j.value("webcam_id", c.webcam_id);
+
+  if (j.contains("enable_webserver")) {
+    c.enable_webserver = j["enable_webserver"].get<bool>();
+    c.enable_streaming = c.enable_webserver;
+  } else if (j.contains("enable_streaming")) {
+    c.enable_streaming = j["enable_streaming"].get<bool>();
+    c.enable_webserver = c.enable_streaming;
+  } else if (j.contains("streaming_enabled")) {
+    c.enable_streaming = j["streaming_enabled"].get<bool>();
+    c.enable_webserver = c.enable_streaming;
+  }
+
+  if (j.contains("webserver_port")) {
+    c.webserver_port = j["webserver_port"].get<uint16_t>();
+    c.streaming_port = c.webserver_port;
+  } else if (j.contains("streaming_port")) {
+    c.streaming_port = j["streaming_port"].get<uint16_t>();
+    c.webserver_port = c.streaming_port;
+  } else if (j.contains("port")) {
+    c.webserver_port = j["port"].get<uint16_t>();
+    c.streaming_port = c.webserver_port;
+  }
+
+  if (j.contains("webserver_host")) {
+    c.webserver_host = j["webserver_host"].get<std::string>();
+    c.streaming_host = c.webserver_host;
+  } else if (j.contains("streaming_host")) {
+    c.streaming_host = j["streaming_host"].get<std::string>();
+    c.webserver_host = c.streaming_host;
+  } else if (j.contains("host")) {
+    c.webserver_host = j["host"].get<std::string>();
+    c.streaming_host = c.webserver_host;
+  }
+
+  if (j.contains("webserver_logging")) {
+    c.webserver_logging = j["webserver_logging"].get<bool>();
+    c.streaming_logging = c.webserver_logging;
+  } else if (j.contains("streaming_logging")) {
+    c.streaming_logging = j["streaming_logging"].get<bool>();
+    c.webserver_logging = c.streaming_logging;
+  }
 
   if (j.contains("target_class_ids")) {
     c.target_class_ids = j["target_class_ids"].get<std::vector<int>>();

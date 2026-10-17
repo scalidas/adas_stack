@@ -2,13 +2,14 @@
 #include <opencv2/imgproc.hpp>
 #include <thread>
 
+#include "calibration/extrinsic_calibration.hpp"
 #include "config/config.hpp"
 #include "core/core_types.hpp"
 #include "perception/lane_detection.hpp"
 #include "perception/perceptionengine.hpp"
+#include "streaming/websocket_streamer.hpp"
 #include "yolo/inference_engine.hpp"
 #include "yolo/opencv_dnn_engine.hpp"
-#include "calibration/extrinsic_calibration.hpp"
 
 static bool is_left(const adas::core::PolynomialLaneBoundary& a,
                     const adas::core::PolynomialLaneBoundary& b) {
@@ -25,6 +26,15 @@ static adas::core::PolynomialLaneBoundary computeCenterline(
 }
 
 namespace adas::perception {
+
+PerceptionEngine::PerceptionEngine() {
+    start_time = std::chrono::system_clock::now();
+    frame_counter = 0;
+}
+
+PerceptionEngine::~PerceptionEngine() {
+    stop_webserver();
+}
 
 PerceptionEngine::PerceptionEngine(const adas::config::PerceptionConfig& cfg) {
     config = cfg;
@@ -45,13 +55,75 @@ PerceptionEngine::PerceptionEngine(const adas::config::PerceptionConfig& cfg) {
 
     if (!config.target_class_ids.empty()) {
         inference_engine->setClasses(config.target_class_ids);
+        for (int cid : config.target_class_ids) {
+            if (cid >= 0 &&
+                cid < static_cast<int>(adas::yolo::coco_classes.size())) {
+                target_labels.insert(adas::yolo::coco_classes[cid]);
+            }
+        }
     }
 
-    adas::calibration::load_extrinsic_calibration(config.extrinsics_path, ipm);
+    if (config.extrinsics_path.empty() ||
+        !adas::calibration::load_extrinsic_calibration(config.extrinsics_path,
+                                                       ipm) ||
+        ipm.empty()) {
+        const std::vector<cv::Point2f> src_pts = {{223.0f, 240.0f},
+                                                  {391.0f, 241.0f},
+                                                  {170.0f, 393.0f},
+                                                  {444.0f, 394.0f}};
+        const std::vector<cv::Point2f> dst_pts = {{220.0f, 143.0f},
+                                                  {420.0f, 143.0f},
+                                                  {220.0f, 400.0f},
+                                                  {420.0f, 400.0f}};
+        ipm = cv::getPerspectiveTransform(src_pts, dst_pts);
+    }
+
+    if (config.enable_webserver) {
+        start_webserver();
+    }
 
     start_time = std::chrono::system_clock::now();
 
     frame_counter = 0;
+}
+
+bool PerceptionEngine::start_webserver() {
+    if (streamer && streamer->is_running()) {
+        return true;
+    }
+    adas::streaming::StreamerConfig streamer_cfg;
+    streamer_cfg.port = config.webserver_port;
+    streamer_cfg.host = config.webserver_host;
+    streamer_cfg.enable_logging = config.webserver_logging;
+    streamer =
+        std::make_unique<adas::streaming::WebSocketStreamer>(streamer_cfg);
+    if (!streamer->start()) {
+        std::cerr << "[PerceptionEngine] Warning: Failed to start webserver on "
+                  << config.webserver_host << ":" << config.webserver_port
+                  << std::endl;
+        return false;
+    }
+    std::cout << "[PerceptionEngine] Webserver streaming running on ws://"
+              << config.webserver_host << ":" << config.webserver_port
+              << std::endl;
+    return true;
+}
+
+void PerceptionEngine::stop_webserver() {
+    if (streamer && streamer->is_running()) {
+        streamer->stop();
+    }
+}
+
+bool PerceptionEngine::is_webserver_running() const {
+    return streamer && streamer->is_running();
+}
+
+void PerceptionEngine::broadcast_world_model(
+    const adas::core::WorldModel& world_model) {
+    if (streamer && streamer->is_running()) {
+        streamer->publish(world_model);
+    }
 }
 
 std::optional<adas::core::Lane> PerceptionEngine::process_lanes(
@@ -80,12 +152,19 @@ std::optional<adas::core::Lane> PerceptionEngine::process_lanes(
     lane.right_boundary = is_left(lane_boundaries[0], lane_boundaries[1])
                               ? lane_boundaries[1]
                               : lane_boundaries[0];
+    
+    constexpr double METERS_PER_BEV_PIXEL = 0.00084;
+    lane.left_boundary.c0 *= METERS_PER_BEV_PIXEL;
+    lane.right_boundary.c0 *= METERS_PER_BEV_PIXEL;
+
+    double average_lane_pos = (lane.left_boundary.c0 + lane.right_boundary.c0) / 2;
+    lane.left_boundary.c0 -= average_lane_pos;
+    lane.right_boundary.c0 -= average_lane_pos;
 
     lane.centerline =
         computeCenterline(lane.left_boundary, lane.right_boundary);
 
-    lane.lane_width =
-        lane.right_boundary.evaluate(0) - lane.left_boundary.evaluate(0);
+    lane.lane_width = (lane.right_boundary.evaluate(0) - lane.left_boundary.evaluate(0));
 
     return lane;
 }
@@ -101,8 +180,8 @@ std::vector<adas::core::TrackedObject> PerceptionEngine::process_obstacles(
     for (auto detection : detections) {
         if (!config.target_class_ids.empty()) {
             if (std::find(config.target_class_ids.begin(),
-                          config.target_class_ids.end(),
-                          detection.class_id) == config.target_class_ids.end()) {
+                          config.target_class_ids.end(), detection.class_id) ==
+                config.target_class_ids.end()) {
                 continue;
             }
         }
@@ -181,6 +260,10 @@ bool PerceptionEngine::runLiveDemo() {
         inference_engine->setClasses(config.target_class_ids);
     }
 
+    if (config.enable_webserver && !is_webserver_running()) {
+        start_webserver();
+    }
+
     int webcam_id = config.webcam_id;
     if (config.image_path.rfind("webcam", 0) == 0) {
         try {
@@ -231,6 +314,11 @@ bool PerceptionEngine::runLiveDemo() {
 
         // Process frame through PerceptionEngine
         adas::core::WorldModel world_model = process_frame(frame);
+
+        // Serialize and broadcast worldmodel over network through webserver
+        if (is_webserver_running()) {
+            broadcast_world_model(world_model);
+        }
 
         // Prepare visualization canvas
         cv::Mat display_frame = frame.clone();
@@ -372,10 +460,16 @@ bool PerceptionEngine::runLiveDemo() {
             has_valid_lane ? cv::format("Lane: Tracked (W=%.2fm)",
                                         world_model.current_lane.lane_width)
                            : "Lane: None";
+        std::string ws_hud = "";
+        if (is_webserver_running()) {
+            ws_hud =
+                cv::format(" | WS: Port %u (%zu clients)", streamer->get_port(),
+                           streamer->get_active_client_count());
+        }
         std::string hud_info =
-            cv::format("Seq: %u | %s | Obstacles: %zu | 'q'/ESC to exit",
+            cv::format("Seq: %u | %s | Obstacles: %zu%s | 'q'/ESC to exit",
                        world_model.frame_seq, hud_lane.c_str(),
-                       world_model.obstacles.size());
+                       world_model.obstacles.size(), ws_hud.c_str());
         cv::putText(display_frame, hud_info, cv::Point(10, 20),
                     cv::FONT_HERSHEY_SIMPLEX, 0.50, cv::Scalar(0, 255, 255), 1,
                     cv::LINE_AA);
@@ -388,6 +482,10 @@ bool PerceptionEngine::runLiveDemo() {
                       << std::endl;
             break;
         }
+    }
+
+    if (is_webserver_running()) {
+        stop_webserver();
     }
 
     cap.release();

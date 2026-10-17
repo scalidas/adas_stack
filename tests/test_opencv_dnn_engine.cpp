@@ -1,4 +1,6 @@
 #include "yolo/opencv_dnn_engine.hpp"
+#include "perception/perceptionengine.hpp"
+#include "streaming/websocket_streamer.hpp"
 #include <iostream>
 #include <memory>
 #include <cassert>
@@ -101,6 +103,66 @@ int main() {
         assert(all_dets[0].class_id == 41);
         std::cout << "[Test] Target class filtering tests passed." << std::endl;
       }
+    }
+
+    // 10. Test PerceptionConfig webserver deserialization & WorldModel JSON serialization & streaming
+    {
+      nlohmann::json test_json = {
+          {"enable_webserver", true},
+          {"webserver_port", 9005},
+          {"webserver_host", "127.0.0.1"},
+          {"webserver_logging", false}
+      };
+      adas::config::PerceptionConfig ws_config;
+      adas::config::from_json(test_json, ws_config);
+      assert(ws_config.enable_webserver == true);
+      assert(ws_config.webserver_port == 9005);
+      assert(ws_config.webserver_host == "127.0.0.1");
+
+      // Verify WorldModel JSON serialization
+      adas::core::WorldModel wm;
+      wm.timestamp_us = 123456789;
+      wm.frame_seq = 42;
+      wm.current_lane.lane_id = 1;
+      wm.current_lane.lane_width = 0.50;
+
+      adas::core::TrackedObject obj;
+      obj.id = 1;
+      obj.label = "bottle";
+      obj.bounding_box = cv::Rect2f(10.0f, 20.0f, 100.0f, 200.0f);
+      obj.position = {1.5, -0.2, 0.1};
+      wm.obstacles.push_back(obj);
+
+      nlohmann::json wm_json;
+      adas::core::to_json(wm_json, wm);
+      assert(wm_json["timestamp_us"] == 123456789);
+      assert(wm_json["frame_seq"] == 42);
+      assert(wm_json["obstacles"].size() == 1);
+      assert(wm_json["obstacles"][0]["label"] == "bottle");
+      assert(wm_json["obstacles"][0]["bounding_box"]["x"] == 10.0f);
+      assert(wm_json["obstacles"][0]["position"]["x"] == 1.5);
+      std::cout << "[Test] WorldModel serialization passed: " << wm_json.dump() << std::endl;
+
+      // Verify WebSocketStreamer lifecycle and broadcast
+      adas::streaming::StreamerConfig streamer_cfg;
+      streamer_cfg.port = 9005;
+      streamer_cfg.host = "127.0.0.1";
+      adas::streaming::WebSocketStreamer streamer(streamer_cfg);
+      assert(streamer.start());
+      assert(streamer.is_running());
+      streamer.publish(wm);
+      streamer.stop();
+      assert(!streamer.is_running());
+      std::cout << "[Test] WebSocketStreamer lifecycle and broadcast passed." << std::endl;
+
+      // Verify PerceptionEngine webserver integration
+      ws_config.model_path = ""; // Skip loading heavy model for lightweight test
+      adas::perception::PerceptionEngine pe(ws_config);
+      assert(pe.is_webserver_running());
+      pe.broadcast_world_model(wm);
+      pe.stop_webserver();
+      assert(!pe.is_webserver_running());
+      std::cout << "[Test] PerceptionEngine webserver integration passed." << std::endl;
     }
 
     std::cout << "[Test] ALL TESTS PASSED SUCCESSFULLY!" << std::endl;

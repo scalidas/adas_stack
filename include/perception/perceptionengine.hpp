@@ -10,6 +10,10 @@
 #include "yolo/inference_engine.hpp"
 #include "yolo/opencv_dnn_engine.hpp"
 
+namespace adas::streaming {
+class WebSocketStreamer;
+}
+
 namespace adas::perception {
 
 /*
@@ -30,9 +34,11 @@ class PerceptionEngine {
     std::unordered_set<std::string> target_labels;
 
     std::chrono::time_point<std::chrono::system_clock> start_time;
-    uint32_t frame_counter;
+    uint32_t frame_counter{0};
 
     cv::Mat ipm;
+
+    std::unique_ptr<streaming::WebSocketStreamer> streamer;
 
     //Extract the current lane from the given frame
     std::optional<adas::core::Lane> process_lanes(const cv::Mat& frame);
@@ -42,12 +48,20 @@ class PerceptionEngine {
         const cv::Mat& frame);
 
    public:
-    PerceptionEngine() = default;
-    PerceptionEngine(const adas::config::PerceptionConfig& cfg);
+    PerceptionEngine();
+    explicit PerceptionEngine(const adas::config::PerceptionConfig& cfg);
+    ~PerceptionEngine();
 
     adas::core::WorldModel process_frame(const cv::Mat& frame);
 
     bool runLiveDemo();
+
+    // Webserver / Streaming interface
+    bool start_webserver();
+    void stop_webserver();
+    bool is_webserver_running() const;
+    void broadcast_world_model(const adas::core::WorldModel& world_model);
+    streaming::WebSocketStreamer* get_streamer() const { return streamer.get(); }
 };
 
 }  // namespace adas::perception
