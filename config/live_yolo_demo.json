@@ -1,0 +1,15 @@
+{
+    "intrinsics_path": "assets/calibration/intrinsic/emeet/emeet_intrinsics.xml",
+    "extrinsics_path": "assets/calibration/extrinsic/emeet/emeet_calibration_2.xml",
+    "model_path": "models/yolov8n.onnx",
+    "engine_type": "opencv",
+    "webcam_id": 0,
+    "target_class_ids": [
+        39,
+        11
+    ],
+    "class_real_heights": {
+        "39": 0.2,
+        "11": 0.07
+    }
+}

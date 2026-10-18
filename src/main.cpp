@@ -159,7 +159,7 @@ int main(int argc, char** argv) {
 
             // Load model and run live demo (with road_object 3D deprojection and class filtering)
             if (engine->loadModel(config.model_path)) {
-                engine->runLiveDemo(config);
+                return engine->runLiveDemo(config) ? 0 : 1;
             } else {
                 std::cerr << "[Main] Failed to load YOLO model from: "
                           << config.model_path << std::endl;
