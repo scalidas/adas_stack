@@ -4,581 +4,631 @@
 #include <fstream>
 #include <iostream>
 
-#include "config/config.hpp"
 #include "calibration/extrinsic_calibration.hpp"
+#include "config/config.hpp"
 #include "perception/road_object.hpp"
 #include "yolo/inference_engine.hpp"
 
 namespace adas::yolo {
 
-OpenCVDNNEngine::OpenCVDNNEngine(const std::string &model_path,
+OpenCVDNNEngine::OpenCVDNNEngine(const std::string& model_path,
                                  float conf_threshold, float nms_threshold)
     : conf_threshold_(conf_threshold), nms_threshold_(nms_threshold) {
-  loadModel(model_path);
+    loadModel(model_path);
 }
 
-bool OpenCVDNNEngine::loadModel(const std::string &model_path) {
-  is_loaded_ = false;
-  if (model_path.empty()) {
-    std::cerr << "[OpenCVDNNEngine] Model path is empty." << std::endl;
-    return false;
-  }
-
-  try {
-    net_ = cv::dnn::readNet(model_path);
-    if (net_.empty()) {
-      std::cerr << "[OpenCVDNNEngine] Failed to load model from: "
-                << model_path << std::endl;
-      return false;
+bool OpenCVDNNEngine::loadModel(const std::string& model_path) {
+    is_loaded_ = false;
+    if (model_path.empty()) {
+        std::cerr << "[OpenCVDNNEngine] Model path is empty." << std::endl;
+        return false;
     }
 
-    net_.setPreferableBackend(cv::dnn::DNN_BACKEND_OPENCV);
-    net_.setPreferableTarget(cv::dnn::DNN_TARGET_CPU);
-    is_loaded_ = true;
-    std::cout << "[OpenCVDNNEngine] Successfully loaded model: " << model_path
-              << std::endl;
-    return true;
-  } catch (const cv::Exception &e) {
-    std::cerr << "[OpenCVDNNEngine] OpenCV Exception loading model: "
-              << e.what() << std::endl;
-    return false;
-  } catch (const std::exception &e) {
-    std::cerr << "[OpenCVDNNEngine] Exception loading model: " << e.what()
-              << std::endl;
-    return false;
-  }
+    try {
+        net_ = cv::dnn::readNet(model_path);
+        if (net_.empty()) {
+            std::cerr << "[OpenCVDNNEngine] Failed to load model from: "
+                      << model_path << std::endl;
+            return false;
+        }
+
+        net_.setPreferableBackend(cv::dnn::DNN_BACKEND_OPENCV);
+        net_.setPreferableTarget(cv::dnn::DNN_TARGET_CPU);
+        is_loaded_ = true;
+        std::cout << "[OpenCVDNNEngine] Successfully loaded model: "
+                  << model_path << std::endl;
+        return true;
+    } catch (const cv::Exception& e) {
+        std::cerr << "[OpenCVDNNEngine] OpenCV Exception loading model: "
+                  << e.what() << std::endl;
+        return false;
+    } catch (const std::exception& e) {
+        std::cerr << "[OpenCVDNNEngine] Exception loading model: " << e.what()
+                  << std::endl;
+        return false;
+    }
 }
 
 void OpenCVDNNEngine::setConfidenceThreshold(float conf_threshold) {
-  conf_threshold_ = conf_threshold;
+    conf_threshold_ = conf_threshold;
 }
 
 void OpenCVDNNEngine::setNMSThreshold(float nms_threshold) {
-  nms_threshold_ = nms_threshold;
+    nms_threshold_ = nms_threshold;
 }
 
 void OpenCVDNNEngine::setInputSize(int width, int height) {
-  input_width_ = width;
-  input_height_ = height;
+    input_width_ = width;
+    input_height_ = height;
 }
 
-void OpenCVDNNEngine::setClasses(const std::vector<std::string> &classes) {
-  classes_ = classes;
-  target_class_ids_.clear();
-  for (const auto &name : classes) {
-    auto it = std::find(coco_classes.begin(), coco_classes.end(), name);
-    if (it != coco_classes.end()) {
-      target_class_ids_.push_back(
-          static_cast<int>(std::distance(coco_classes.begin(), it)));
+void OpenCVDNNEngine::setClasses(const std::vector<std::string>& classes) {
+    classes_ = classes;
+    target_class_ids_.clear();
+    for (const auto& name : classes) {
+        auto it = std::find(coco_classes.begin(), coco_classes.end(), name);
+        if (it != coco_classes.end()) {
+            target_class_ids_.push_back(
+                static_cast<int>(std::distance(coco_classes.begin(), it)));
+        }
     }
-  }
 }
 
-void OpenCVDNNEngine::setClasses(const std::vector<int> &classes) {
-  target_class_ids_ = classes;
-  classes_.clear();
-  for (auto idx : classes) {
-    if (idx >= 0 && idx < static_cast<int>(coco_classes.size())) {
-      classes_.push_back(coco_classes[idx]);
+void OpenCVDNNEngine::setClasses(const std::vector<int>& classes) {
+    target_class_ids_ = classes;
+    classes_.clear();
+    for (auto idx : classes) {
+        if (idx >= 0 && idx < static_cast<int>(coco_classes.size())) {
+            classes_.push_back(coco_classes[idx]);
+        }
     }
-  }
 }
 
-const std::vector<int> &OpenCVDNNEngine::getTargetClassIds() const {
-  return target_class_ids_;
+const std::vector<int>& OpenCVDNNEngine::getTargetClassIds() const {
+    return target_class_ids_;
 }
 
-bool OpenCVDNNEngine::isLoaded() const { return is_loaded_; }
+bool OpenCVDNNEngine::isLoaded() const {
+    return is_loaded_;
+}
 
 float OpenCVDNNEngine::getConfidenceThreshold() const {
-  return conf_threshold_;
+    return conf_threshold_;
 }
 
-float OpenCVDNNEngine::getNMSThreshold() const { return nms_threshold_; }
+float OpenCVDNNEngine::getNMSThreshold() const {
+    return nms_threshold_;
+}
 
 void OpenCVDNNEngine::setCameraIntrinsics(double fx, double fy, double cx,
-                                         double cy, int calib_w, int calib_h) {
-  fx_ = fx;
-  fy_ = fy;
-  cx_ = cx;
-  cy_ = cy;
-  calib_w_ = calib_w;
-  calib_h_ = calib_h;
-  has_calibration_ = true;
-  camera_matrix_ =
-      (cv::Mat_<double>(3, 3) << fx_, 0, cx_, 0, fy_, cy_, 0, 0, 1);
-}
-
-bool OpenCVDNNEngine::loadCameraIntrinsics(const std::string &intrinsics_path) {
-  if (intrinsics_path.empty()) {
-    return false;
-  }
-  cv::FileStorage fs(intrinsics_path, cv::FileStorage::READ);
-  if (!fs.isOpened()) {
-    std::cerr << "[OpenCVDNNEngine] Warning: Could not open intrinsics file: "
-              << intrinsics_path << std::endl;
-    return false;
-  }
-  fs["camera_matrix"] >> camera_matrix_;
-  fs["distortion_coefficients"] >> dist_coeffs_;
-  fs["image_width"] >> calib_w_;
-  fs["image_height"] >> calib_h_;
-  if (!camera_matrix_.empty() && camera_matrix_.rows >= 3 &&
-      camera_matrix_.cols >= 3) {
-    fx_ = camera_matrix_.at<double>(0, 0);
-    cx_ = camera_matrix_.at<double>(0, 2);
-    fy_ = camera_matrix_.at<double>(1, 1);
-    cy_ = camera_matrix_.at<double>(1, 2);
+                                          double cy, int calib_w, int calib_h) {
+    fx_ = fx;
+    fy_ = fy;
+    cx_ = cx;
+    cy_ = cy;
+    calib_w_ = calib_w;
+    calib_h_ = calib_h;
     has_calibration_ = true;
-    std::cout << "[OpenCVDNNEngine] Loaded camera intrinsics from: "
-              << intrinsics_path << std::endl;
-    return true;
-  }
-  std::cerr << "[OpenCVDNNEngine] Warning: Failed to read camera_matrix from: "
+    camera_matrix_ =
+        (cv::Mat_<double>(3, 3) << fx_, 0, cx_, 0, fy_, cy_, 0, 0, 1);
+}
+
+bool OpenCVDNNEngine::loadCameraIntrinsics(const std::string& intrinsics_path) {
+    if (intrinsics_path.empty()) {
+        return false;
+    }
+    cv::FileStorage fs(intrinsics_path, cv::FileStorage::READ);
+    if (!fs.isOpened()) {
+        std::cerr
+            << "[OpenCVDNNEngine] Warning: Could not open intrinsics file: "
             << intrinsics_path << std::endl;
-  return false;
-}
-
-bool OpenCVDNNEngine::loadExtrinsicCalibration(const std::string &extrinsics_path) {
-  if (extrinsics_path.empty()) {
+        return false;
+    }
+    fs["camera_matrix"] >> camera_matrix_;
+    fs["distortion_coefficients"] >> dist_coeffs_;
+    fs["image_width"] >> calib_w_;
+    fs["image_height"] >> calib_h_;
+    if (!camera_matrix_.empty() && camera_matrix_.rows >= 3 &&
+        camera_matrix_.cols >= 3) {
+        fx_ = camera_matrix_.at<double>(0, 0);
+        cx_ = camera_matrix_.at<double>(0, 2);
+        fy_ = camera_matrix_.at<double>(1, 1);
+        cy_ = camera_matrix_.at<double>(1, 2);
+        has_calibration_ = true;
+        std::cout << "[OpenCVDNNEngine] Loaded camera intrinsics from: "
+                  << intrinsics_path << std::endl;
+        return true;
+    }
+    std::cerr
+        << "[OpenCVDNNEngine] Warning: Failed to read camera_matrix from: "
+        << intrinsics_path << std::endl;
     return false;
-  }
-  return adas::calibration::compute_camera_to_ground_transform(
-      extrinsics_path, camera_matrix_, dist_coeffs_, ground_transform_, calib_w_, calib_h_);
 }
 
-void OpenCVDNNEngine::setGroundTransform(const cv::Mat &ground_transform) {
-  ground_transform_ = ground_transform;
+bool OpenCVDNNEngine::loadExtrinsicCalibration(
+    const std::string& extrinsics_path) {
+    if (extrinsics_path.empty()) {
+        return false;
+    }
+    return adas::calibration::compute_camera_to_ground_transform(
+        extrinsics_path, camera_matrix_, dist_coeffs_, ground_transform_,
+        calib_w_, calib_h_);
 }
 
-const cv::Mat &OpenCVDNNEngine::getGroundTransform() const {
-  return ground_transform_;
+void OpenCVDNNEngine::setGroundTransform(const cv::Mat& ground_transform) {
+    ground_transform_ = ground_transform;
+}
+
+const cv::Mat& OpenCVDNNEngine::getGroundTransform() const {
+    return ground_transform_;
 }
 
 void OpenCVDNNEngine::setObjectRealHeight(double height) {
-  default_real_height_ = height;
+    default_real_height_ = height;
 }
 
 void OpenCVDNNEngine::setClassRealHeights(
-    const std::map<int, double> &heights) {
-  class_real_heights_ = heights;
+    const std::map<int, double>& heights) {
+    class_real_heights_ = heights;
 }
 
-double OpenCVDNNEngine::getFx() const { return fx_; }
-double OpenCVDNNEngine::getFy() const { return fy_; }
-double OpenCVDNNEngine::getCx() const { return cx_; }
-double OpenCVDNNEngine::getCy() const { return cy_; }
-int OpenCVDNNEngine::getCalibWidth() const { return calib_w_; }
-int OpenCVDNNEngine::getCalibHeight() const { return calib_h_; }
+double OpenCVDNNEngine::getFx() const {
+    return fx_;
+}
+double OpenCVDNNEngine::getFy() const {
+    return fy_;
+}
+double OpenCVDNNEngine::getCx() const {
+    return cx_;
+}
+double OpenCVDNNEngine::getCy() const {
+    return cy_;
+}
+int OpenCVDNNEngine::getCalibWidth() const {
+    return calib_w_;
+}
+int OpenCVDNNEngine::getCalibHeight() const {
+    return calib_h_;
+}
 double OpenCVDNNEngine::getObjectRealHeight() const {
-  return default_real_height_;
+    return default_real_height_;
 }
-const std::map<int, double> &OpenCVDNNEngine::getClassRealHeights() const {
-  return class_real_heights_;
+const std::map<int, double>& OpenCVDNNEngine::getClassRealHeights() const {
+    return class_real_heights_;
 }
 
-std::vector<adas::core::DetectedObject>
-OpenCVDNNEngine::infer(const cv::Mat &frame) {
-  std::vector<adas::core::DetectedObject> detections;
-  if (!is_loaded_ || net_.empty() || frame.empty()) {
+std::vector<adas::core::DetectedObject> OpenCVDNNEngine::infer(
+    const cv::Mat& frame) {
+    std::vector<adas::core::DetectedObject> detections;
+    if (!is_loaded_ || net_.empty() || frame.empty()) {
+        return detections;
+    }
+
+    try {
+        // Construct 4D blob from input frame
+        cv::Mat blob;
+        cv::dnn::blobFromImage(frame, blob, 1.0 / 255.0,
+                               cv::Size(input_width_, input_height_),
+                               cv::Scalar(0, 0, 0), true, false);
+
+        net_.setInput(blob);
+
+        std::vector<cv::Mat> outputs;
+        net_.forward(outputs, net_.getUnconnectedOutLayersNames());
+
+        if (outputs.empty()) {
+            return detections;
+        }
+
+        std::vector<cv::Rect2d> bboxes;
+        std::vector<float> confidences;
+        std::vector<int> class_ids;
+
+        float x_scale = static_cast<float>(frame.cols) / input_width_;
+        float y_scale = static_cast<float>(frame.rows) / input_height_;
+
+        for (auto& output_mat : outputs) {
+            cv::Mat mat = output_mat;
+            if (mat.dims == 3) {
+                // e.g. [1, 84, 8400] -> reshape to 2D [84, 8400]
+                int sizes[2] = {mat.size[1], mat.size[2]};
+                mat = cv::Mat(2, sizes, CV_32F, mat.ptr<float>());
+            }
+
+            int rows = mat.rows;
+            int cols = mat.cols;
+
+            if (rows == 0 || cols == 0) {
+                continue;
+            }
+
+            // Check tensor orientation:
+            // Orientation A: rows is channels (e.g. 84 or 85), cols is anchors (e.g. 8400)
+            if (rows < cols && rows >= 5) {
+                int num_anchors = cols;
+                int num_channels = rows;
+
+                for (int i = 0; i < num_anchors; ++i) {
+                    float cx = mat.at<float>(0, i);
+                    float cy = mat.at<float>(1, i);
+                    float w = mat.at<float>(2, i);
+                    float h = mat.at<float>(3, i);
+
+                    float max_score = 0.0f;
+                    int best_class_id = -1;
+
+                    // YOLOv8 format: indices 4..num_channels-1 are class scores
+                    for (int c = 4; c < num_channels; ++c) {
+                        float score = mat.at<float>(c, i);
+                        if (score > max_score) {
+                            max_score = score;
+                            best_class_id = c - 4;
+                        }
+                    }
+
+                    if (max_score >= conf_threshold_) {
+                        float left = (cx - 0.5f * w) * x_scale;
+                        float top = (cy - 0.5f * h) * y_scale;
+                        float width = w * x_scale;
+                        float height = h * y_scale;
+
+                        bboxes.emplace_back(left, top, width, height);
+                        confidences.push_back(max_score);
+                        class_ids.push_back(best_class_id);
+                    }
+                }
+            } else if (rows >= cols && cols >= 5) {
+                // Orientation B: rows is anchors, cols is attributes [x, y, w, h, (obj_conf,) class_scores...]
+                int num_anchors = rows;
+                int num_attrs = cols;
+
+                for (int i = 0; i < num_anchors; ++i) {
+                    float cx = mat.at<float>(i, 0);
+                    float cy = mat.at<float>(i, 1);
+                    float w = mat.at<float>(i, 2);
+                    float h = mat.at<float>(i, 3);
+
+                    float confidence = 0.0f;
+                    int best_class_id = -1;
+
+                    if (num_attrs == 6) {
+                        // [x, y, w, h, score, class_id]
+                        confidence = mat.at<float>(i, 4);
+                        best_class_id = static_cast<int>(mat.at<float>(i, 5));
+                    } else if (num_attrs > 6) {
+                        // YOLOv5 format: [x, y, w, h, obj_conf, class0, class1, ...]
+                        float obj_conf = mat.at<float>(i, 4);
+                        float max_cls_score = 0.0f;
+                        for (int c = 5; c < num_attrs; ++c) {
+                            float score = mat.at<float>(c, i);
+                            if (score > max_cls_score) {
+                                max_cls_score = score;
+                                best_class_id = c - 5;
+                            }
+                        }
+                        confidence = obj_conf * max_cls_score;
+                    } else if (num_attrs == 5) {
+                        confidence = mat.at<float>(i, 4);
+                        best_class_id = 0;
+                    }
+
+                    if (confidence >= conf_threshold_) {
+                        float left = (cx - 0.5f * w) * x_scale;
+                        float top = (cy - 0.5f * h) * y_scale;
+                        float width = w * x_scale;
+                        float height = h * y_scale;
+
+                        bboxes.emplace_back(left, top, width, height);
+                        confidences.push_back(confidence);
+                        class_ids.push_back(best_class_id);
+                    }
+                }
+            }
+        }
+
+        if (bboxes.empty()) {
+            return detections;
+        }
+
+        std::vector<int> nms_indices;
+        cv::dnn::NMSBoxes(bboxes, confidences, conf_threshold_, nms_threshold_,
+                          nms_indices);
+
+        // Adapt camera intrinsics if frame resolution differs from calibration resolution
+        double cur_fx = fx_;
+        double cur_cx = cx_;
+        double cur_fy = fy_;
+        double cur_cy = cy_;
+
+        if (calib_w_ > 0 && calib_h_ > 0 &&
+            (frame.cols != calib_w_ || frame.rows != calib_h_)) {
+            double sx = static_cast<double>(frame.cols) / calib_w_;
+            double sy = static_cast<double>(frame.rows) / calib_h_;
+            cur_fx = fx_ * sx;
+            cur_cx = cx_ * sx;
+            cur_fy = fy_ * sy;
+            cur_cy = cy_ * sy;
+        } else if (!has_calibration_) {
+            // Default fallback matrix if no calibration is provided
+            cur_fx = 0.8 * frame.cols;
+            cur_fy = 0.8 * frame.cols;
+            cur_cx = frame.cols / 2.0;
+            cur_cy = frame.rows / 2.0;
+        }
+
+        for (int idx : nms_indices) {
+            int cid = class_ids[idx];
+
+            // Filter out detections not present in target_class_ids_ (if specified)
+            if (!target_class_ids_.empty()) {
+                if (std::find(target_class_ids_.begin(),
+                              target_class_ids_.end(),
+                              cid) == target_class_ids_.end()) {
+                    continue;
+                }
+            }
+
+            adas::core::DetectedObject obj;
+            obj.bounding_box =
+                cv::Rect2f(static_cast<float>(bboxes[idx].x),
+                           static_cast<float>(bboxes[idx].y),
+                           static_cast<float>(bboxes[idx].width),
+                           static_cast<float>(bboxes[idx].height));
+            obj.confidence = confidences[idx];
+            obj.class_id = cid;
+
+            if (classes_.size() == coco_classes.size() && cid >= 0 &&
+                cid < static_cast<int>(classes_.size())) {
+                obj.label = classes_[cid];
+            } else if (cid >= 0 &&
+                       cid < static_cast<int>(coco_classes.size())) {
+                obj.label = coco_classes[cid];
+            } else {
+                obj.label = "class_" + std::to_string(cid);
+            }
+
+            // Determine real physical height in meters for pinhole depth deprojection
+            double real_height = default_real_height_;
+            if (class_real_heights_.count(cid)) {
+                real_height = class_real_heights_.at(cid);
+            } else {
+                // COCO default physical object heights in meters
+                switch (cid) {
+                    case 0:
+                        real_height = 1.70;
+                        break;  // person
+                    case 1:
+                        real_height = 1.00;
+                        break;  // bicycle
+                    case 2:
+                        real_height = 1.50;
+                        break;  // car
+                    case 3:
+                        real_height = 1.20;
+                        break;  // motorcycle
+                    case 5:
+                        real_height = 3.20;
+                        break;  // bus
+                    case 7:
+                        real_height = 3.00;
+                        break;  // truck
+                    case 9:
+                        real_height = 0.80;
+                        break;  // traffic light
+                    case 11:
+                        real_height = 0.75;
+                        break;  // stop sign
+                    case 39:
+                        real_height = 0.25;
+                        break;  // bottle
+                    case 41:
+                        real_height = 0.10;
+                        break;  // cup
+                    default:
+                        real_height = default_real_height_;
+                        break;
+                }
+            }
+
+            // Populate position field of DetectedObject by pinhole camera equations & ground transform
+            if (obj.bounding_box.height > 0.0f) {
+                adas::perception::RoadObject road_obj(obj, real_height, cur_fy,
+                                                      cur_fx, cur_cx, cur_cy,
+                                                      ground_transform_);
+                obj.position = road_obj.process().position;
+            }
+
+            detections.push_back(obj);
+        }
+    } catch (const cv::Exception& e) {
+        std::cerr << "[OpenCVDNNEngine] OpenCV Exception during infer: "
+                  << e.what() << std::endl;
+    } catch (const std::exception& e) {
+        std::cerr << "[OpenCVDNNEngine] Exception during infer: " << e.what()
+                  << std::endl;
+    }
+
     return detections;
-  }
+}
 
-  try {
-    // Construct 4D blob from input frame
-    cv::Mat blob;
-    cv::dnn::blobFromImage(frame, blob, 1.0 / 255.0,
-                           cv::Size(input_width_, input_height_),
-                           cv::Scalar(0, 0, 0), true, false);
-
-    net_.setInput(blob);
-
-    std::vector<cv::Mat> outputs;
-    net_.forward(outputs, net_.getUnconnectedOutLayersNames());
-
-    if (outputs.empty()) {
-      return detections;
+bool OpenCVDNNEngine::runLiveDemo(
+    const adas::config::PerceptionConfig& config) {
+    cv::VideoCapture cap(config.webcam_id);
+    if (!cap.isOpened()) {
+        std::cerr << "[OpenCVDNNEngine] Error: Could not open webcam with ID "
+                  << config.webcam_id << std::endl;
+        return false;
     }
 
+    default_real_height_ = config.object_real_height;
+    class_real_heights_ = config.class_real_heights;
+    if (!config.target_class_ids.empty()) {
+        setClasses(config.target_class_ids);
+    }
 
-    std::vector<cv::Rect2d> bboxes;
-    std::vector<float> confidences;
-    std::vector<int> class_ids;
-
-    float x_scale = static_cast<float>(frame.cols) / input_width_;
-    float y_scale = static_cast<float>(frame.rows) / input_height_;
-
-    for (auto &output_mat : outputs) {
-      cv::Mat mat = output_mat;
-      if (mat.dims == 3) {
-        // e.g. [1, 84, 8400] -> reshape to 2D [84, 8400]
-        int sizes[2] = {mat.size[1], mat.size[2]};
-        mat = cv::Mat(2, sizes, CV_32F, mat.ptr<float>());
-      }
-
-      int rows = mat.rows;
-      int cols = mat.cols;
-
-      if (rows == 0 || cols == 0) {
-        continue;
-      }
-
-      // Check tensor orientation:
-      // Orientation A: rows is channels (e.g. 84 or 85), cols is anchors (e.g. 8400)
-      if (rows < cols && rows >= 5) {
-        int num_anchors = cols;
-        int num_channels = rows;
-
-        for (int i = 0; i < num_anchors; ++i) {
-          float cx = mat.at<float>(0, i);
-          float cy = mat.at<float>(1, i);
-          float w = mat.at<float>(2, i);
-          float h = mat.at<float>(3, i);
-
-          float max_score = 0.0f;
-          int best_class_id = -1;
-
-          // YOLOv8 format: indices 4..num_channels-1 are class scores
-          for (int c = 4; c < num_channels; ++c) {
-            float score = mat.at<float>(c, i);
-            if (score > max_score) {
-              max_score = score;
-              best_class_id = c - 4;
-            }
-          }
-
-          if (max_score >= conf_threshold_) {
-            float left = (cx - 0.5f * w) * x_scale;
-            float top = (cy - 0.5f * h) * y_scale;
-            float width = w * x_scale;
-            float height = h * y_scale;
-
-            bboxes.emplace_back(left, top, width, height);
-            confidences.push_back(max_score);
-            class_ids.push_back(best_class_id);
-          }
+    if (!config.intrinsics_path.empty()) {
+        if (!loadCameraIntrinsics(config.intrinsics_path)) {
+            std::cerr << "[OpenCVDNNEngine] Warning: Falling back to default "
+                         "intrinsics."
+                      << std::endl;
         }
-      } else if (rows >= cols && cols >= 5) {
-        // Orientation B: rows is anchors, cols is attributes [x, y, w, h, (obj_conf,) class_scores...]
-        int num_anchors = rows;
-        int num_attrs = cols;
-
-        for (int i = 0; i < num_anchors; ++i) {
-          float cx = mat.at<float>(i, 0);
-          float cy = mat.at<float>(i, 1);
-          float w = mat.at<float>(i, 2);
-          float h = mat.at<float>(i, 3);
-
-          float confidence = 0.0f;
-          int best_class_id = -1;
-
-          if (num_attrs == 6) {
-            // [x, y, w, h, score, class_id]
-            confidence = mat.at<float>(i, 4);
-            best_class_id = static_cast<int>(mat.at<float>(i, 5));
-          } else if (num_attrs > 6) {
-            // YOLOv5 format: [x, y, w, h, obj_conf, class0, class1, ...]
-            float obj_conf = mat.at<float>(i, 4);
-            float max_cls_score = 0.0f;
-            for (int c = 5; c < num_attrs; ++c) {
-              float score = mat.at<float>(c, i);
-              if (score > max_cls_score) {
-                max_cls_score = score;
-                best_class_id = c - 5;
-              }
-            }
-            confidence = obj_conf * max_cls_score;
-          } else if (num_attrs == 5) {
-            confidence = mat.at<float>(i, 4);
-            best_class_id = 0;
-          }
-
-          if (confidence >= conf_threshold_) {
-            float left = (cx - 0.5f * w) * x_scale;
-            float top = (cy - 0.5f * h) * y_scale;
-            float width = w * x_scale;
-            float height = h * y_scale;
-
-            bboxes.emplace_back(left, top, width, height);
-            confidences.push_back(confidence);
-            class_ids.push_back(best_class_id);
-          }
-        }
-      }
+    } else {
+        has_calibration_ = false;
     }
 
-    if (bboxes.empty()) {
-      return detections;
+    if (!config.extrinsics_path.empty()) {
+        loadExtrinsicCalibration(config.extrinsics_path);
     }
 
-    std::vector<int> nms_indices;
-    cv::dnn::NMSBoxes(bboxes, confidences, conf_threshold_, nms_threshold_,
-                      nms_indices);
-
-    // Adapt camera intrinsics if frame resolution differs from calibration resolution
-    double cur_fx = fx_;
-    double cur_cx = cx_;
-    double cur_fy = fy_;
-    double cur_cy = cy_;
-
-    if (calib_w_ > 0 && calib_h_ > 0 &&
-        (frame.cols != calib_w_ || frame.rows != calib_h_)) {
-      double sx = static_cast<double>(frame.cols) / calib_w_;
-      double sy = static_cast<double>(frame.rows) / calib_h_;
-      cur_fx = fx_ * sx;
-      cur_cx = cx_ * sx;
-      cur_fy = fy_ * sy;
-      cur_cy = cy_ * sy;
-    } else if (!has_calibration_) {
-      // Default fallback matrix if no calibration is provided
-      cur_fx = 0.8 * frame.cols;
-      cur_fy = 0.8 * frame.cols;
-      cur_cx = frame.cols / 2.0;
-      cur_cy = frame.rows / 2.0;
+    // If calibration dimensions are known, request camera resolution to match
+    if (calib_w_ > 0 && calib_h_ > 0) {
+        cap.set(cv::CAP_PROP_FRAME_WIDTH, calib_w_);
+        cap.set(cv::CAP_PROP_FRAME_HEIGHT, calib_h_);
     }
 
-    for (int idx : nms_indices) {
-      int cid = class_ids[idx];
+    std::cout << "[OpenCVDNNEngine] Starting live webcam demo on device "
+              << config.webcam_id << ". Press 'q' or 'ESC' to exit."
+              << std::endl;
 
-      // Filter out detections not present in target_class_ids_ (if specified)
-      if (!target_class_ids_.empty()) {
-        if (std::find(target_class_ids_.begin(), target_class_ids_.end(), cid) ==
-            target_class_ids_.end()) {
-          continue;
-        }
-      }
+    const std::string window_name = "ADAS YOLO Live Demo";
+    cv::namedWindow(window_name, cv::WINDOW_AUTOSIZE);
 
-      adas::core::DetectedObject obj;
-      obj.bounding_box = cv::Rect2f(
-          static_cast<float>(bboxes[idx].x), static_cast<float>(bboxes[idx].y),
-          static_cast<float>(bboxes[idx].width),
-          static_cast<float>(bboxes[idx].height));
-      obj.confidence = confidences[idx];
-      obj.class_id = cid;
-
-      if (classes_.size() == coco_classes.size() &&
-          cid >= 0 && cid < static_cast<int>(classes_.size())) {
-        obj.label = classes_[cid];
-      } else if (cid >= 0 && cid < static_cast<int>(coco_classes.size())) {
-        obj.label = coco_classes[cid];
-      } else {
-        obj.label = "class_" + std::to_string(cid);
-      }
-
-      // Determine real physical height in meters for pinhole depth deprojection
-      double real_height = default_real_height_;
-      if (class_real_heights_.count(cid)) {
-        real_height = class_real_heights_.at(cid);
-      } else {
-        // COCO default physical object heights in meters
-        switch (cid) {
-          case 0:  real_height = 1.70; break; // person
-          case 1:  real_height = 1.00; break; // bicycle
-          case 2:  real_height = 1.50; break; // car
-          case 3:  real_height = 1.20; break; // motorcycle
-          case 5:  real_height = 3.20; break; // bus
-          case 7:  real_height = 3.00; break; // truck
-          case 9:  real_height = 0.80; break; // traffic light
-          case 11: real_height = 0.75; break; // stop sign
-          case 39: real_height = 0.25; break; // bottle
-          case 41: real_height = 0.10; break; // cup
-          default:
-            real_height = default_real_height_;
+    cv::Mat raw_frame, frame;
+    while (true) {
+        cap >> raw_frame;
+        if (raw_frame.empty()) {
+            std::cerr << "[OpenCVDNNEngine] Warning: Captured empty frame."
+                      << std::endl;
             break;
         }
-      }
 
-      // Populate position field of DetectedObject by pinhole camera equations & ground transform
-      if (obj.bounding_box.height > 0.0f) {
-        adas::perception::RoadObject road_obj(obj, real_height, cur_fy, cur_fx, cur_cx, cur_cy, ground_transform_);
-        obj.position = road_obj.process().position;
-      }
+        // Adapt camera intrinsics if current frame resolution differs from calibration resolution
+        double cur_fx = fx_;
+        double cur_cx = cx_;
+        double cur_fy = fy_;
+        double cur_cy = cy_;
+        cv::Mat scaled_camera_matrix;
 
-      detections.push_back(obj);
-    }
-  } catch (const cv::Exception &e) {
-    std::cerr << "[OpenCVDNNEngine] OpenCV Exception during infer: "
-              << e.what() << std::endl;
-  } catch (const std::exception &e) {
-    std::cerr << "[OpenCVDNNEngine] Exception during infer: " << e.what()
-              << std::endl;
-  }
-
-  return detections;
-}
-
-bool OpenCVDNNEngine::runLiveDemo(const adas::config::PerceptionConfig &config) {
-  cv::VideoCapture cap(config.webcam_id);
-  if (!cap.isOpened()) {
-    std::cerr << "[OpenCVDNNEngine] Error: Could not open webcam with ID "
-              << config.webcam_id << std::endl;
-    return false;
-  }
-
-  default_real_height_ = config.object_real_height;
-  class_real_heights_ = config.class_real_heights;
-  if (!config.target_class_ids.empty()) {
-    setClasses(config.target_class_ids);
-  }
-
-  if (!config.intrinsics_path.empty()) {
-    if (!loadCameraIntrinsics(config.intrinsics_path)) {
-      std::cerr << "[OpenCVDNNEngine] Warning: Falling back to default intrinsics."
-                << std::endl;
-    }
-  } else {
-    has_calibration_ = false;
-  }
-
-  if (!config.extrinsics_path.empty()) {
-    loadExtrinsicCalibration(config.extrinsics_path);
-  }
-
-  // If calibration dimensions are known, request camera resolution to match
-  if (calib_w_ > 0 && calib_h_ > 0) {
-    cap.set(cv::CAP_PROP_FRAME_WIDTH, calib_w_);
-    cap.set(cv::CAP_PROP_FRAME_HEIGHT, calib_h_);
-  }
-
-  std::cout << "[OpenCVDNNEngine] Starting live webcam demo on device "
-            << config.webcam_id << ". Press 'q' or 'ESC' to exit." << std::endl;
-
-  const std::string window_name = "ADAS YOLO Live Demo";
-  cv::namedWindow(window_name, cv::WINDOW_AUTOSIZE);
-
-  cv::Mat raw_frame, frame;
-  while (true) {
-    cap >> raw_frame;
-    if (raw_frame.empty()) {
-      std::cerr << "[OpenCVDNNEngine] Warning: Captured empty frame."
-                << std::endl;
-      break;
-    }
-
-    // Adapt camera intrinsics if current frame resolution differs from calibration resolution
-    double cur_fx = fx_;
-    double cur_cx = cx_;
-    double cur_fy = fy_;
-    double cur_cy = cy_;
-    cv::Mat scaled_camera_matrix;
-
-    if (calib_w_ > 0 && calib_h_ > 0 &&
-        (raw_frame.cols != calib_w_ || raw_frame.rows != calib_h_)) {
-      double sx = static_cast<double>(raw_frame.cols) / calib_w_;
-      double sy = static_cast<double>(raw_frame.rows) / calib_h_;
-      cur_fx = fx_ * sx;
-      cur_cx = cx_ * sx;
-      cur_fy = fy_ * sy;
-      cur_cy = cy_ * sy;
-      if (!camera_matrix_.empty()) {
-        scaled_camera_matrix = camera_matrix_.clone();
-        scaled_camera_matrix.at<double>(0, 0) *= sx;
-        scaled_camera_matrix.at<double>(0, 2) *= sx;
-        scaled_camera_matrix.at<double>(1, 1) *= sy;
-        scaled_camera_matrix.at<double>(1, 2) *= sy;
-      }
-    } else if (!camera_matrix_.empty()) {
-      scaled_camera_matrix = camera_matrix_.clone();
-    } else {
-      // Default fallback matrix if no calibration file is provided
-      cur_fx = 0.8 * raw_frame.cols;
-      cur_fy = 0.8 * raw_frame.cols;
-      cur_cx = raw_frame.cols / 2.0;
-      cur_cy = raw_frame.rows / 2.0;
-      scaled_camera_matrix = (cv::Mat_<double>(3, 3) << cur_fx, 0, cur_cx,
-                                                        0, cur_fy, cur_cy,
-                                                        0, 0, 1);
-    }
-
-    // Undistort frame if distortion coefficients are present
-    if (!scaled_camera_matrix.empty() && !dist_coeffs_.empty()) {
-      cv::undistort(raw_frame, frame, scaled_camera_matrix, dist_coeffs_);
-    } else {
-      frame = raw_frame;
-    }
-
-    auto detections = infer(frame);
-
-    size_t rendered_count = 0;
-    for (const auto &obj : detections) {
-      // Filter out detections not present in target_class_ids (if specified)
-      if (!config.target_class_ids.empty()) {
-        if (std::find(config.target_class_ids.begin(), config.target_class_ids.end(),
-                      obj.class_id) == config.target_class_ids.end()) {
-          continue;
+        if (calib_w_ > 0 && calib_h_ > 0 &&
+            (raw_frame.cols != calib_w_ || raw_frame.rows != calib_h_)) {
+            double sx = static_cast<double>(raw_frame.cols) / calib_w_;
+            double sy = static_cast<double>(raw_frame.rows) / calib_h_;
+            cur_fx = fx_ * sx;
+            cur_cx = cx_ * sx;
+            cur_fy = fy_ * sy;
+            cur_cy = cy_ * sy;
+            if (!camera_matrix_.empty()) {
+                scaled_camera_matrix = camera_matrix_.clone();
+                scaled_camera_matrix.at<double>(0, 0) *= sx;
+                scaled_camera_matrix.at<double>(0, 2) *= sx;
+                scaled_camera_matrix.at<double>(1, 1) *= sy;
+                scaled_camera_matrix.at<double>(1, 2) *= sy;
+            }
+        } else if (!camera_matrix_.empty()) {
+            scaled_camera_matrix = camera_matrix_.clone();
+        } else {
+            // Default fallback matrix if no calibration file is provided
+            cur_fx = 0.8 * raw_frame.cols;
+            cur_fy = 0.8 * raw_frame.cols;
+            cur_cx = raw_frame.cols / 2.0;
+            cur_cy = raw_frame.rows / 2.0;
+            scaled_camera_matrix = (cv::Mat_<double>(3, 3) << cur_fx, 0, cur_cx,
+                                    0, cur_fy, cur_cy, 0, 0, 1);
         }
-      }
 
-      // Bounding box
-      cv::Rect bbox_int(
-          static_cast<int>(obj.bounding_box.x),
-          static_cast<int>(obj.bounding_box.y),
-          static_cast<int>(obj.bounding_box.width),
-          static_cast<int>(obj.bounding_box.height));
-      cv::rectangle(frame, bbox_int, cv::Scalar(0, 255, 0), 2);
+        // Undistort frame if distortion coefficients are present
+        if (!scaled_camera_matrix.empty() && !dist_coeffs_.empty()) {
+            cv::undistort(raw_frame, frame, scaled_camera_matrix, dist_coeffs_);
+        } else {
+            frame = raw_frame;
+        }
 
-      // Format text overlays using position populated by infer()
-      std::string line1 = cv::format("%s %.2f | Fwd: %.2fm",
-                                     obj.label.c_str(), obj.confidence, obj.position.x);
-      std::string line2 = cv::format("Ground: [X=%.2f, Y=%.2f, Z=%.2f]m",
-                                     obj.position.x, obj.position.y, obj.position.z);
+        auto detections = infer(frame);
 
-      int font = cv::FONT_HERSHEY_SIMPLEX;
-      double scale = 0.45;
-      int thick = 1;
-      int b1 = 0, b2 = 0;
-      cv::Size s1 = cv::getTextSize(line1, font, scale, thick, &b1);
-      cv::Size s2 = cv::getTextSize(line2, font, scale, thick, &b2);
-      int banner_w = std::max(s1.width, s2.width) + 8;
-      int banner_h = s1.height + s2.height + 8;
+        size_t rendered_count = 0;
+        for (const auto& obj : detections) {
+            // Filter out detections not present in target_class_ids (if specified)
+            if (!config.target_class_ids.empty()) {
+                if (std::find(config.target_class_ids.begin(),
+                              config.target_class_ids.end(),
+                              obj.class_id) == config.target_class_ids.end()) {
+                    continue;
+                }
+            }
 
-      int banner_x = std::clamp(bbox_int.x, 0, std::max(0, frame.cols - banner_w));
-      int banner_y = std::max(banner_h + 2, bbox_int.y);
+            // Bounding box
+            cv::Rect bbox_int(static_cast<int>(obj.bounding_box.x),
+                              static_cast<int>(obj.bounding_box.y),
+                              static_cast<int>(obj.bounding_box.width),
+                              static_cast<int>(obj.bounding_box.height));
+            cv::rectangle(frame, bbox_int, cv::Scalar(0, 255, 0), 2);
 
-      // Render solid background banner for high-contrast readability
-      cv::rectangle(frame,
-                    cv::Point(banner_x, banner_y - banner_h),
-                    cv::Point(banner_x + banner_w, banner_y),
-                    cv::Scalar(25, 25, 25), cv::FILLED);
+            // Format text overlays using position populated by infer()
+            std::string line1 =
+                cv::format("%s %.2f | Fwd: %.2fm", obj.label.c_str(),
+                           obj.confidence, obj.position.x);
+            std::string line2 =
+                cv::format("Ground: [X=%.2f, Y=%.2f, Z=%.2f]m", obj.position.x,
+                           obj.position.y, obj.position.z);
 
-      // Draw Depth & Label line (bright green)
-      cv::putText(frame, line1,
-                  cv::Point(banner_x + 4, banner_y - s2.height - 4),
-                  font, scale, cv::Scalar(0, 255, 0), thick);
+            int font = cv::FONT_HERSHEY_SIMPLEX;
+            double scale = 0.45;
+            int thick = 1;
+            int b1 = 0, b2 = 0;
+            cv::Size s1 = cv::getTextSize(line1, font, scale, thick, &b1);
+            cv::Size s2 = cv::getTextSize(line2, font, scale, thick, &b2);
+            int banner_w = std::max(s1.width, s2.width) + 8;
+            int banner_h = s1.height + s2.height + 8;
 
-      // Draw 3D Coordinates line (yellow/cyan)
-      cv::putText(frame, line2,
-                  cv::Point(banner_x + 4, banner_y - 2),
-                  font, scale, cv::Scalar(0, 255, 255), thick);
+            int banner_x =
+                std::clamp(bbox_int.x, 0, std::max(0, frame.cols - banner_w));
+            int banner_y = std::max(banner_h + 2, bbox_int.y);
 
-      rendered_count++;
+            // Render solid background banner for high-contrast readability
+            cv::rectangle(frame, cv::Point(banner_x, banner_y - banner_h),
+                          cv::Point(banner_x + banner_w, banner_y),
+                          cv::Scalar(25, 25, 25), cv::FILLED);
+
+            // Draw Depth & Label line (bright green)
+            cv::putText(frame, line1,
+                        cv::Point(banner_x + 4, banner_y - s2.height - 4), font,
+                        scale, cv::Scalar(0, 255, 0), thick);
+
+            // Draw 3D Coordinates line (yellow/cyan)
+            cv::putText(frame, line2, cv::Point(banner_x + 4, banner_y - 2),
+                        font, scale, cv::Scalar(0, 255, 255), thick);
+
+            rendered_count++;
+        }
+
+        // Display HUD at top of screen
+        std::string hud = cv::format(
+            "Tracked Objects: %zu (Filtered from %zu detections) | 'q'/ESC to "
+            "exit",
+            rendered_count, detections.size());
+        cv::putText(frame, hud, cv::Point(15, 25), cv::FONT_HERSHEY_SIMPLEX,
+                    0.55, cv::Scalar(0, 255, 255), 2);
+
+        cv::imshow(window_name, frame);
+
+        int key = cv::waitKey(30);
+        if (key == 27 || key == 'q' || key == 'Q') {
+            std::cout << "[OpenCVDNNEngine] Live demo stopped by user."
+                      << std::endl;
+            break;
+        }
     }
 
-    // Display HUD at top of screen
-    std::string hud = cv::format("Tracked Objects: %zu (Filtered from %zu detections) | 'q'/ESC to exit",
-                                 rendered_count, detections.size());
-    cv::putText(frame, hud, cv::Point(15, 25),
-                cv::FONT_HERSHEY_SIMPLEX, 0.55, cv::Scalar(0, 255, 255), 2);
-
-    cv::imshow(window_name, frame);
-
-    int key = cv::waitKey(30);
-    if (key == 27 || key == 'q' || key == 'Q') {
-      std::cout << "[OpenCVDNNEngine] Live demo stopped by user." << std::endl;
-      break;
-    }
-  }
-
-  cv::destroyWindow(window_name);
-  return true;
+    cv::destroyWindow(window_name);
+    return true;
 }
 
 bool OpenCVDNNEngine::runLiveDemo(int webcam_id,
-                                 const std::string &intrinsics_path) {
-  adas::config::PerceptionConfig config;
-  config.webcam_id = webcam_id;
-  config.intrinsics_path = intrinsics_path;
-  return runLiveDemo(config);
+                                  const std::string& intrinsics_path) {
+    adas::config::PerceptionConfig config;
+    config.webcam_id = webcam_id;
+    config.intrinsics_path = intrinsics_path;
+    return runLiveDemo(config);
 }
 
-} // namespace adas::yolo
+}  // namespace adas::yolo
