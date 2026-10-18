@@ -10,6 +10,8 @@
 #include "perception/road_object.hpp"
 #include "yolo/opencv_dnn_engine.hpp"
 
+#include "core/core_types.hpp"
+
 enum mode {
     INTRINSIC_CALIBRATION,
     EXTRINSIC_CALIBRATION,
@@ -20,6 +22,7 @@ enum mode {
 };
 
 int main(int argc, char** argv) {
+    adas::core::start_time = std::chrono::steady_clock::now();
     // Default paths
     const std::string_view default_config_path =
         "config/perception_config.json";

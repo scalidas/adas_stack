@@ -33,7 +33,6 @@ class PerceptionEngine {
 
     std::unordered_set<std::string> target_labels;
 
-    std::chrono::time_point<std::chrono::system_clock> start_time;
     uint32_t frame_counter{0};
 
     cv::Mat ipm;

@@ -28,7 +28,6 @@ static adas::core::PolynomialLaneBoundary computeCenterline(
 namespace adas::perception {
 
 PerceptionEngine::PerceptionEngine() {
-    start_time = std::chrono::system_clock::now();
     frame_counter = 0;
 }
 
@@ -84,8 +83,6 @@ PerceptionEngine::PerceptionEngine(const adas::config::PerceptionConfig& cfg) {
     if (config.enable_webserver) {
         start_webserver();
     }
-
-    start_time = std::chrono::system_clock::now();
 
     frame_counter = 0;
 }
@@ -155,19 +152,21 @@ std::optional<adas::core::Lane> PerceptionEngine::process_lanes(
     lane.right_boundary = is_left(lane_boundaries[0], lane_boundaries[1])
                               ? lane_boundaries[1]
                               : lane_boundaries[0];
-    
+
     constexpr double METERS_PER_BEV_PIXEL = 0.00084;
     lane.left_boundary.c0 *= METERS_PER_BEV_PIXEL;
     lane.right_boundary.c0 *= METERS_PER_BEV_PIXEL;
 
-    double average_lane_pos = (lane.left_boundary.c0 + lane.right_boundary.c0) / 2;
+    double average_lane_pos =
+        (lane.left_boundary.c0 + lane.right_boundary.c0) / 2;
     lane.left_boundary.c0 -= average_lane_pos;
     lane.right_boundary.c0 -= average_lane_pos;
 
     lane.centerline =
         computeCenterline(lane.left_boundary, lane.right_boundary);
 
-    lane.lane_width = (lane.right_boundary.evaluate(0) - lane.left_boundary.evaluate(0));
+    lane.lane_width =
+        (lane.right_boundary.evaluate(0) - lane.left_boundary.evaluate(0));
 
     return lane;
 }
@@ -228,10 +227,7 @@ adas::core::WorldModel PerceptionEngine::process_frame(const cv::Mat& frame) {
 
     adas::core::WorldModel world_model;
 
-    world_model.timestamp_us = static_cast<uint64_t>(
-        std::chrono::duration_cast<std::chrono::microseconds>(
-            std::chrono::system_clock::now() - start_time)
-            .count());
+    world_model.timestamp_us = adas::core::get_current_timestamp_us();
 
     world_model.frame_seq = frame_counter++;
 
