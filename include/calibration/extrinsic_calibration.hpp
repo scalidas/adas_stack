@@ -25,4 +25,14 @@ bool load_extrinsic_calibration(const std::string &filename, cv::Mat &H,
                                 std::vector<cv::Point2f> *src_pts = nullptr,
                                 std::vector<cv::Point2f> *dst_pts = nullptr);
 
+// Compute the 3x3 transformation matrix from camera coordinate frame [x_depth, y_lat, z_vert]
+// to ground plane reference frame [X_fwd, Y_right, Z_up] using extrinsic calibration and intrinsics
+bool compute_camera_to_ground_transform(
+    const std::string &extrinsics_path,
+    const cv::Mat &camera_matrix,
+    const cv::Mat &dist_coeffs,
+    cv::Mat &ground_transform,
+    int calib_w = 640,
+    int calib_h = 480);
+
 } // namespace adas::calibration

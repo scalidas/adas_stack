@@ -47,6 +47,9 @@ PerceptionEngine::PerceptionEngine(const adas::config::PerceptionConfig& cfg) {
         if (!config.intrinsics_path.empty()) {
             dnn_engine->loadCameraIntrinsics(config.intrinsics_path);
         }
+        if (!config.extrinsics_path.empty()) {
+            dnn_engine->loadExtrinsicCalibration(config.extrinsics_path);
+        }
         dnn_engine->setObjectRealHeight(config.object_real_height);
         if (!config.class_real_heights.empty()) {
             dnn_engine->setClassRealHeights(config.class_real_heights);
@@ -250,6 +253,9 @@ bool PerceptionEngine::runLiveDemo() {
         if (!config.intrinsics_path.empty()) {
             dnn_engine->loadCameraIntrinsics(config.intrinsics_path);
         }
+        if (!config.extrinsics_path.empty()) {
+            dnn_engine->loadExtrinsicCalibration(config.extrinsics_path);
+        }
         dnn_engine->setObjectRealHeight(config.object_real_height);
         if (!config.class_real_heights.empty()) {
             dnn_engine->setClassRealHeights(config.class_real_heights);
@@ -418,11 +424,11 @@ bool PerceptionEngine::runLiveDemo() {
                               2);
 
                 std::string line1 =
-                    cv::format("%s %.2f | Depth: %.2fm", obj.label.c_str(),
+                    cv::format("%s %.2f | Fwd: %.2fm", obj.label.c_str(),
                                obj.confidence, obj.position.x);
                 std::string line2 =
-                    cv::format("Pose: [X=%.2f, Y=%.2f, Z=%.2f]m",
-                               obj.position.y, obj.position.z, obj.position.x);
+                    cv::format("Ground: [X=%.2f, Y=%.2f, Z=%.2f]m",
+                               obj.position.x, obj.position.y, obj.position.z);
 
                 int font = cv::FONT_HERSHEY_SIMPLEX;
                 double scale = 0.45;

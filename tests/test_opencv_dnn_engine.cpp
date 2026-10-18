@@ -165,6 +165,42 @@ int main() {
       std::cout << "[Test] PerceptionEngine webserver integration passed." << std::endl;
     }
 
+    // 11. Test Extrinsic Calibration and Ground Plane Transformation
+    {
+      std::cout << "[Test] Testing extrinsic calibration and ground plane transformation..." << std::endl;
+      OpenCVDNNEngine calib_engine;
+      calib_engine.loadCameraIntrinsics("assets/calibration/intrinsic/emeet/emeet_intrinsics.xml");
+      bool ext_loaded = calib_engine.loadExtrinsicCalibration("assets/calibration/extrinsic/emeet/emeet_calibration_2.xml");
+      assert(ext_loaded);
+
+      cv::Mat M = calib_engine.getGroundTransform();
+      assert(!M.empty() && M.rows == 3 && M.cols == 3);
+      std::cout << "[Test] Extrinsic ground transform:\n" << M << std::endl;
+
+      // Verify rotation matrix properties:
+      // With pitch down ~16 deg: M(0,0) ~ cos(16.1) ~ 0.96, M(2,0) ~ -sin(16.1) ~ -0.28
+      assert(std::abs(M.at<double>(0, 0) - 0.96) < 0.05);
+      assert(std::abs(M.at<double>(1, 1) - 1.00) < 0.05);
+      assert(std::abs(M.at<double>(2, 2) - 0.96) < 0.05);
+      assert(M.at<double>(2, 0) < -0.20); // forward depth slopes down into ground
+
+      // Test infer with ground coordinates
+      if (calib_engine.loadModel("models/yolov8n.onnx")) {
+        cv::Mat sample = cv::imread("assets/samples/cup.jpg");
+        if (!sample.empty()) {
+          auto dets = calib_engine.infer(sample);
+          assert(!dets.empty());
+          std::cout << "[Test] Detected with Ground Plane Pose: "
+                    << dets[0].label
+                    << " [X_fwd=" << dets[0].position.x
+                    << "m, Y_right=" << dets[0].position.y
+                    << "m, Z_up=" << dets[0].position.z << "m]" << std::endl;
+          assert(dets[0].position.x > 0.0); // +X is forward along ground
+        }
+      }
+      std::cout << "[Test] Ground plane coordinate transformation tests passed." << std::endl;
+    }
+
     std::cout << "[Test] ALL TESTS PASSED SUCCESSFULLY!" << std::endl;
     return 0;
 }

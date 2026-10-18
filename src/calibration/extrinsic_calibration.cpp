@@ -247,4 +247,120 @@ int run_extrinsic_calibration(const std::string &image_path,
   return 0;
 }
 
+bool compute_camera_to_ground_transform(
+    const std::string &extrinsics_path,
+    const cv::Mat &camera_matrix,
+    const cv::Mat &dist_coeffs,
+    cv::Mat &ground_transform,
+    int calib_w,
+    int calib_h) {
+  if (extrinsics_path.empty()) {
+    std::cerr << "[Extrinsics] Empty extrinsics path provided." << std::endl;
+    return false;
+  }
+
+  std::vector<cv::Point2f> src_pts;
+  cv::Mat dummy_H;
+  if (!load_extrinsic_calibration(extrinsics_path, dummy_H, &src_pts, nullptr) ||
+      src_pts.size() != 4) {
+    std::cerr << "[Extrinsics] Failed to load 4 source points from: "
+              << extrinsics_path << std::endl;
+    return false;
+  }
+
+  // Prepare camera matrix K for 640x480 resolution (extrinsic calibration coordinate frame)
+  cv::Mat K;
+  if (camera_matrix.empty() || camera_matrix.rows < 3 || camera_matrix.cols < 3) {
+    // Default EMeet intrinsics scaled to 640x480
+    K = (cv::Mat_<double>(3, 3) << 352.15, 0.0, 339.11,
+                                   0.0, 472.70, 238.09,
+                                   0.0, 0.0, 1.0);
+  } else {
+    if (camera_matrix.type() != CV_64F) {
+      camera_matrix.convertTo(K, CV_64F);
+    } else {
+      K = camera_matrix.clone();
+    }
+
+    double scale_x = 1.0;
+    double scale_y = 1.0;
+    if (calib_w > 0 && calib_h > 0 && (calib_w != 640 || calib_h != 480)) {
+      scale_x = 640.0 / static_cast<double>(calib_w);
+      scale_y = 480.0 / static_cast<double>(calib_h);
+    } else if (K.at<double>(0, 2) > 640.0 || K.at<double>(1, 2) > 480.0) {
+      scale_x = 640.0 / 1920.0;
+      scale_y = 480.0 / 1080.0;
+    }
+
+    K.at<double>(0, 0) *= scale_x;
+    K.at<double>(0, 2) *= scale_x;
+    K.at<double>(1, 1) *= scale_y;
+    K.at<double>(1, 2) *= scale_y;
+  }
+
+  // Real-world ground plane coordinates for calibration target corners (in meters):
+  // Length = 0.216m along forward (+X), Width = 0.168m lateral (+Y right, -Y left)
+  // Index 0: Top-Left  (far-left)
+  // Index 1: Top-Right (far-right)
+  // Index 2: Bottom-Left (near-left)
+  // Index 3: Bottom-Right (near-right)
+  const std::vector<cv::Point3d> object_pts = {
+      cv::Point3d(0.216, -0.084, 0.0),
+      cv::Point3d(0.216,  0.084, 0.0),
+      cv::Point3d(0.000, -0.084, 0.0),
+      cv::Point3d(0.000,  0.084, 0.0)
+  };
+
+  cv::Mat rvec, tvec;
+  bool pnp_ok = cv::solvePnP(object_pts, src_pts, K, dist_coeffs, rvec, tvec,
+                            false, cv::SOLVEPNP_IPPE);
+  if (!pnp_ok) {
+    pnp_ok = cv::solvePnP(object_pts, src_pts, K, dist_coeffs, rvec, tvec,
+                          false, cv::SOLVEPNP_ITERATIVE);
+  }
+
+  if (!pnp_ok) {
+    std::cerr << "[Extrinsics] solvePnP failed for extrinsic calibration."
+              << std::endl;
+    return false;
+  }
+
+  // Convert rotation vector to 3x3 rotation matrix R_cg: maps ground -> OpenCV camera
+  cv::Mat R_cg;
+  cv::Rodrigues(rvec, R_cg);
+  cv::Mat R_gc = R_cg.t(); // Inverse: maps OpenCV camera -> ground
+
+  // Map OpenCV camera frame [X_right, Y_down, Z_optical] to ground frame [X_fwd, Y_right, Z_up]:
+  // X_fwd   =  R_gc[0, 0]*X_right + R_gc[0, 1]*Y_down + R_gc[0, 2]*Z_optical
+  // Y_right =  R_gc[1, 0]*X_right + R_gc[1, 1]*Y_down + R_gc[1, 2]*Z_optical
+  // Z_up    = -R_gc[2, 0]*X_right - R_gc[2, 1]*Y_down - R_gc[2, 2]*Z_optical
+  //
+  // In RoadObject camera frame: [x_depth, y_lat, z_vert]:
+  // X_right   =  y_lat
+  // Y_down    = -z_vert
+  // Z_optical =  x_depth
+  //
+  // Therefore, matrix M mapping [x_depth, y_lat, z_vert] -> [X_fwd, Y_right, Z_up]:
+  ground_transform = cv::Mat::zeros(3, 3, CV_64F);
+
+  // Row 0: X_fwd
+  ground_transform.at<double>(0, 0) =  R_gc.at<double>(0, 2); // coeff for x_depth
+  ground_transform.at<double>(0, 1) =  R_gc.at<double>(0, 0); // coeff for y_lat
+  ground_transform.at<double>(0, 2) = -R_gc.at<double>(0, 1); // coeff for z_vert
+
+  // Row 1: Y_right
+  ground_transform.at<double>(1, 0) =  R_gc.at<double>(1, 2); // coeff for x_depth
+  ground_transform.at<double>(1, 1) =  R_gc.at<double>(1, 0); // coeff for y_lat
+  ground_transform.at<double>(1, 2) = -R_gc.at<double>(1, 1); // coeff for z_vert
+
+  // Row 2: Z_up
+  ground_transform.at<double>(2, 0) = -R_gc.at<double>(2, 2); // coeff for x_depth
+  ground_transform.at<double>(2, 1) = -R_gc.at<double>(2, 0); // coeff for y_lat
+  ground_transform.at<double>(2, 2) =  R_gc.at<double>(2, 1); // coeff for z_vert
+
+  std::cout << "[Extrinsics] Successfully computed camera-to-ground transform from "
+            << extrinsics_path << ":\n" << ground_transform << std::endl;
+  return true;
+}
+
 } // namespace adas::calibration

@@ -1,4 +1,5 @@
 #include "perception/road_object.hpp"
+#include "calibration/extrinsic_calibration.hpp"
 #include "config/config.hpp"
 #include <iomanip>
 #include <iostream>
@@ -7,13 +8,15 @@ namespace adas::perception {
 
 RoadObject::RoadObject(const adas::core::DetectedObject &detected_obj,
                        double real_height_m, double fy, double fx, double cx,
-                       double cy)
+                       double cy, const cv::Mat &ground_transform)
     : detected_obj_(detected_obj), real_height_m_(real_height_m), fy_(fy),
-      fx_(fx), cx_(cx), cy_(cy) {}
+      fx_(fx), cx_(cx), cy_(cy), ground_transform_(ground_transform) {}
 
 RoadObject::RoadObject(const adas::core::DetectedObject &detected_obj,
-                       double real_height_m, const cv::Mat &camera_matrix)
-    : detected_obj_(detected_obj), real_height_m_(real_height_m) {
+                       double real_height_m, const cv::Mat &camera_matrix,
+                       const cv::Mat &ground_transform)
+    : detected_obj_(detected_obj), real_height_m_(real_height_m),
+      ground_transform_(ground_transform) {
   set_intrinsics(camera_matrix);
 }
 
@@ -32,6 +35,10 @@ void RoadObject::set_intrinsics(const cv::Mat &camera_matrix) {
     fy_ = camera_matrix.at<double>(1, 1);
     cy_ = camera_matrix.at<double>(1, 2);
   }
+}
+
+void RoadObject::set_ground_transform(const cv::Mat &ground_transform) {
+  ground_transform_ = ground_transform;
 }
 
 void RoadObject::set_real_height(double real_height_m) {
@@ -65,13 +72,41 @@ adas::core::TrackedObject RoadObject::process() const {
   // Vertical height offset Y = (cy - v_center) * Z / fy
   double y_vert = ((cy_ - v_center) * z_depth) / fy_;
 
-  // Position in vehicle/camera coordinate frame:
-  // +x axis = forward depth (Z)
-  // +y axis = lateral offset right (X)
-  // +z axis = vertical offset up (Y)
-  tracked.position.x = z_depth;
-  tracked.position.y = x_lat;
-  tracked.position.z = y_vert;
+  // Camera coordinate frame coordinates:
+  // x_depth = forward depth along optical axis
+  // y_lat   = lateral offset right
+  // z_vert  = vertical offset up
+  double x_depth = z_depth;
+
+  if (!ground_transform_.empty() && ground_transform_.rows == 3 &&
+      ground_transform_.cols == 3) {
+    cv::Mat M;
+    if (ground_transform_.type() != CV_64F) {
+      ground_transform_.convertTo(M, CV_64F);
+    } else {
+      M = ground_transform_;
+    }
+
+    // Transform from camera coordinate frame [x_depth, y_lat, z_vert] to
+    // ground plane reference frame:
+    // +x axis = forward along the ground
+    // +y axis = lateral offset right along the ground
+    // +z axis = vertical offset up perpendicular to the ground
+    tracked.position.x = M.at<double>(0, 0) * x_depth +
+                         M.at<double>(0, 1) * x_lat +
+                         M.at<double>(0, 2) * y_vert;
+    tracked.position.y = M.at<double>(1, 0) * x_depth +
+                         M.at<double>(1, 1) * x_lat +
+                         M.at<double>(1, 2) * y_vert;
+    tracked.position.z = M.at<double>(2, 0) * x_depth +
+                         M.at<double>(2, 1) * x_lat +
+                         M.at<double>(2, 2) * y_vert;
+  } else {
+    // Fallback: camera optical axis coordinate frame
+    tracked.position.x = x_depth;
+    tracked.position.y = x_lat;
+    tracked.position.z = y_vert;
+  }
 
   return tracked;
 }
@@ -107,6 +142,14 @@ int run_road_object_demo(const std::string &config_path) {
     }
   }
 
+  // Load ground transform from extrinsic calibration if provided
+  cv::Mat ground_transform;
+  if (!config.extrinsics_path.empty()) {
+    cv::Mat K = (cv::Mat_<double>(3, 3) << fx, 0, cx, 0, fy, cy, 0, 0, 1);
+    adas::calibration::compute_camera_to_ground_transform(
+        config.extrinsics_path, K, cv::Mat(), ground_transform, calib_w, calib_h);
+  }
+
   // Load image if available
   cv::Mat image = cv::imread(config.image_path);
   if (image.empty()) {
@@ -134,8 +177,9 @@ int run_road_object_demo(const std::string &config_path) {
                  config.object_bbox_width, config.object_bbox_height);
   detected.confidence = 0.95f;
 
-  // Instantiate RoadObject and compute 3D pose
-  RoadObject road_obj(detected, config.object_real_height, fy, fx, cx, cy);
+  // Instantiate RoadObject and compute 3D pose in ground frame
+  RoadObject road_obj(detected, config.object_real_height, fy, fx, cx, cy,
+                      ground_transform);
   adas::core::TrackedObject tracked = road_obj.process();
 
   // Print results
@@ -154,10 +198,10 @@ int run_road_object_demo(const std::string &config_path) {
   std::cout << "Camera Principal Pt:   cx=" << cx << " px, cy=" << cy << " px"
             << std::endl;
   std::cout << "--------------------------------------------------" << std::endl;
-  std::cout << "Calculated 3D Position:" << std::endl;
-  std::cout << "  Forward Depth (Z):   " << tracked.position.x << " m" << std::endl;
-  std::cout << "  Lateral Offset (X):  " << tracked.position.y << " m" << std::endl;
-  std::cout << "  Vertical Offset (Y): " << tracked.position.z << " m" << std::endl;
+  std::cout << "Calculated 3D Position (Ground Reference Frame):" << std::endl;
+  std::cout << "  Forward along Ground (+X): " << tracked.position.x << " m" << std::endl;
+  std::cout << "  Lateral Offset Right (+Y): " << tracked.position.y << " m" << std::endl;
+  std::cout << "  Vertical Height Up   (+Z): " << tracked.position.z << " m" << std::endl;
   std::cout << "Confidence:            " << tracked.confidence << std::endl;
   std::cout << "==================================================\n" << std::endl;
 
@@ -175,7 +219,7 @@ int run_road_object_demo(const std::string &config_path) {
               cv::Point(bbox_int.x, std::max(0, bbox_int.y - 10)),
               cv::FONT_HERSHEY_SIMPLEX, 0.7, cv::Scalar(0, 255, 0), 2);
 
-  std::string pose_str = cv::format("3D Pose: [Depth Z=%.2fm, Lat X=%.2fm, Vert Y=%.2fm]",
+  std::string pose_str = cv::format("Ground Pose: [Fwd X=%.2fm, Lat Y=%.2fm, Up Z=%.2fm]",
                                     tracked.position.x, tracked.position.y,
                                     tracked.position.z);
   cv::putText(vis, pose_str, cv::Point(20, vis.rows - 30),

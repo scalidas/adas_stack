@@ -5,6 +5,7 @@
 #include <iostream>
 
 #include "config/config.hpp"
+#include "calibration/extrinsic_calibration.hpp"
 #include "perception/road_object.hpp"
 #include "yolo/inference_engine.hpp"
 
@@ -136,6 +137,22 @@ bool OpenCVDNNEngine::loadCameraIntrinsics(const std::string &intrinsics_path) {
   std::cerr << "[OpenCVDNNEngine] Warning: Failed to read camera_matrix from: "
             << intrinsics_path << std::endl;
   return false;
+}
+
+bool OpenCVDNNEngine::loadExtrinsicCalibration(const std::string &extrinsics_path) {
+  if (extrinsics_path.empty()) {
+    return false;
+  }
+  return adas::calibration::compute_camera_to_ground_transform(
+      extrinsics_path, camera_matrix_, dist_coeffs_, ground_transform_, calib_w_, calib_h_);
+}
+
+void OpenCVDNNEngine::setGroundTransform(const cv::Mat &ground_transform) {
+  ground_transform_ = ground_transform;
+}
+
+const cv::Mat &OpenCVDNNEngine::getGroundTransform() const {
+  return ground_transform_;
 }
 
 void OpenCVDNNEngine::setObjectRealHeight(double height) {
@@ -371,9 +388,9 @@ OpenCVDNNEngine::infer(const cv::Mat &frame) {
         }
       }
 
-      // Populate position field of DetectedObject by pinhole camera equations
+      // Populate position field of DetectedObject by pinhole camera equations & ground transform
       if (obj.bounding_box.height > 0.0f) {
-        adas::perception::RoadObject road_obj(obj, real_height, cur_fy, cur_fx, cur_cx, cur_cy);
+        adas::perception::RoadObject road_obj(obj, real_height, cur_fy, cur_fx, cur_cx, cur_cy, ground_transform_);
         obj.position = road_obj.process().position;
       }
 
@@ -411,6 +428,10 @@ bool OpenCVDNNEngine::runLiveDemo(const adas::config::PerceptionConfig &config) 
     }
   } else {
     has_calibration_ = false;
+  }
+
+  if (!config.extrinsics_path.empty()) {
+    loadExtrinsicCalibration(config.extrinsics_path);
   }
 
   // If calibration dimensions are known, request camera resolution to match
@@ -497,10 +518,10 @@ bool OpenCVDNNEngine::runLiveDemo(const adas::config::PerceptionConfig &config) 
       cv::rectangle(frame, bbox_int, cv::Scalar(0, 255, 0), 2);
 
       // Format text overlays using position populated by infer()
-      std::string line1 = cv::format("%s %.2f | Depth: %.2fm",
+      std::string line1 = cv::format("%s %.2f | Fwd: %.2fm",
                                      obj.label.c_str(), obj.confidence, obj.position.x);
-      std::string line2 = cv::format("Pose: [X=%.2f, Y=%.2f, Z=%.2f]m",
-                                     obj.position.y, obj.position.z, obj.position.x);
+      std::string line2 = cv::format("Ground: [X=%.2f, Y=%.2f, Z=%.2f]m",
+                                     obj.position.x, obj.position.y, obj.position.z);
 
       int font = cv::FONT_HERSHEY_SIMPLEX;
       double scale = 0.45;

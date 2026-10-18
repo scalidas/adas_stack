@@ -35,6 +35,9 @@ public:
   void setCameraIntrinsics(double fx, double fy, double cx, double cy,
                            int calib_w = 1920, int calib_h = 1080);
   bool loadCameraIntrinsics(const std::string &intrinsics_path);
+  bool loadExtrinsicCalibration(const std::string &extrinsics_path);
+  void setGroundTransform(const cv::Mat &ground_transform);
+  const cv::Mat &getGroundTransform() const;
   void setObjectRealHeight(double height);
   void setClassRealHeights(const std::map<int, double> &heights);
 
@@ -71,6 +74,7 @@ private:
   bool has_calibration_{true};
   cv::Mat camera_matrix_;
   cv::Mat dist_coeffs_;
+  cv::Mat ground_transform_;
 
   // Object real physical height configuration
   double default_real_height_{1.5};
