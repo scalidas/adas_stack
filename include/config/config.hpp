@@ -38,6 +38,11 @@ struct PerceptionConfig {
   std::string streaming_host{"0.0.0.0"};
   bool webserver_logging{false};
   bool streaming_logging{false};
+
+  // Trajectory planning fields
+  int num_poses{20};
+  double path_step_size{0.5};
+  double cruise_velocity{1.0};
 };
 
 inline void to_json(nlohmann::json &j, const PerceptionConfig &c) {
@@ -61,7 +66,10 @@ inline void to_json(nlohmann::json &j, const PerceptionConfig &c) {
                      {"enable_webserver", c.enable_webserver},
                      {"webserver_port", c.webserver_port},
                      {"webserver_host", c.webserver_host},
-                     {"webserver_logging", c.webserver_logging}};
+                     {"webserver_logging", c.webserver_logging},
+                     {"num_poses", c.num_poses},
+                     {"path_step_size", c.path_step_size},
+                     {"cruise_velocity", c.cruise_velocity}};
   if (!c.class_real_heights.empty()) {
     nlohmann::json crh = nlohmann::json::object();
     for (const auto &[k, v] : c.class_real_heights) {
@@ -90,6 +98,9 @@ inline void from_json(const nlohmann::json &j, PerceptionConfig &c) {
   c.model_path = j.value("model_path", c.model_path);
   c.engine_type = j.value("engine_type", c.engine_type);
   c.webcam_id = j.value("webcam_id", c.webcam_id);
+  c.num_poses = j.value("num_poses", c.num_poses);
+  c.path_step_size = j.value("path_step_size", c.path_step_size);
+  c.cruise_velocity = j.value("cruise_velocity", c.cruise_velocity);
 
   if (j.contains("enable_webserver")) {
     c.enable_webserver = j["enable_webserver"].get<bool>();

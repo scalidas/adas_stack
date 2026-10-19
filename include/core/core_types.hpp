@@ -13,7 +13,11 @@ All speed/velocity is in m/s
 +z axis is up
 */
 
+//Forward declarations
+
 namespace adas::core {
+
+struct TrajectoryPoint;
 
 inline std::chrono::time_point<std::chrono::steady_clock> start_time =
     std::chrono::steady_clock::now();
@@ -92,17 +96,6 @@ struct EgoState {
     double steering_angle{0.0};  // current steering angle
 };
 
-struct WorldModel {
-    uint64_t timestamp_us{0};
-    uint32_t frame_seq{0};
-    EgoState ego_state;
-    Lane current_lane;
-    std::optional<Lane> left_neighbor_lane;
-    std::optional<Lane> right_neighbor_lane;
-    std::vector<TrackedObject> obstacles;
-    std::vector<TrafficSign> traffic_signs;
-};
-
 // 2. Planning Structures
 
 struct TrajectoryPoint {
@@ -126,6 +119,19 @@ struct VehicleControlCommand {
     double target_velocity{0.0};
     double target_acceleration{0.0};
     bool emergency_brake{false};
+};
+
+struct WorldModel {
+    uint64_t timestamp_us{0};
+    uint32_t frame_seq{0};
+    EgoState ego_state;
+    Lane current_lane;
+    std::optional<Lane> left_neighbor_lane;
+    std::optional<Lane> right_neighbor_lane;
+    std::vector<TrackedObject> obstacles;
+    std::vector<TrafficSign> traffic_signs;
+
+    Trajectory trajectory;
 };
 
 }  // namespace adas::core

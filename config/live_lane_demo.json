@@ -1,7 +1,7 @@
 {
     "image_path": "webcam 0",
     "intrinsics_path": "assets/calibration/intrinsic/emeet/emeet_intrinsics.xml",
-    "extrinsics_path": "assets/calibration/extrinsic/emeet/emeet_extrinsics.xml",
+    "extrinsics_path": "assets/calibration/extrinsic/emeet/emeet_calibration_2.xml",
     "min_inlier_count": 100,
     "ransac_inlier_threshold": 50.0,
     "ransac_iterations": 150,

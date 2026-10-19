@@ -7,6 +7,7 @@
 #include "core/core_types.hpp"
 #include "perception/lane_detection.hpp"
 #include "perception/perceptionengine.hpp"
+#include "planning/planner.hpp"
 #include "streaming/websocket_streamer.hpp"
 #include "yolo/inference_engine.hpp"
 #include "yolo/opencv_dnn_engine.hpp"
@@ -221,8 +222,6 @@ adas::core::WorldModel PerceptionEngine::process_frame(const cv::Mat& frame) {
 
         // Main thread computes the other field locally
         detected_objects = process_obstacles(frame);
-
-        // worker joins automatically here at the closing brace
     }
 
     adas::core::WorldModel world_model;
@@ -298,6 +297,9 @@ bool PerceptionEngine::runLiveDemo() {
         << "[PerceptionEngine] Live demo running. Press 'q' or 'ESC' to exit."
         << std::endl;
 
+    //Include planner
+    adas::planning::Planner planner(config);
+
     while (true) {
         cap >> raw_frame;
         if (raw_frame.empty()) {
@@ -316,6 +318,8 @@ bool PerceptionEngine::runLiveDemo() {
 
         // Process frame through PerceptionEngine
         adas::core::WorldModel world_model = process_frame(frame);
+
+        world_model.trajectory = planner.plan_trajectory(world_model);
 
         // Serialize and broadcast worldmodel over network through webserver
         if (is_webserver_running()) {

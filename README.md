@@ -13,7 +13,7 @@ cmake --build build --config Release
 #### Compile with Ninja (Windows)
 
 ```
-cmake -G "Ninja" -DCMAKE_BUILD_TYPE=Release ..
+cmake -G "Ninja" -DCMAKE_BUILD_TYPE=Release .
 cmake --build build
 ```
 

@@ -19,5 +19,8 @@
     "enable_webserver": true,
     "webserver_port": 9002,
     "webserver_host": "0.0.0.0",
-    "webserver_logging": false
+    "webserver_logging": false,
+    "num_poses": 10,
+    "path_step_size": 0.1,
+    "cruise_velocity": 1.0
 }

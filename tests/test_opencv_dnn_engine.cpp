@@ -1,5 +1,6 @@
 #include "yolo/opencv_dnn_engine.hpp"
 #include "perception/perceptionengine.hpp"
+#include "planning/planner.hpp"
 #include "streaming/websocket_streamer.hpp"
 #include <iostream>
 #include <memory>
@@ -48,6 +49,9 @@ int main() {
 
     adas::config::PerceptionConfig test_config;
     assert(!test_config.target_class_ids.empty());
+    assert(test_config.num_poses == 20);
+    assert(test_config.path_step_size == 0.5);
+    assert(test_config.cruise_velocity == 1.0);
     std::cout << "[Test] PerceptionConfig target_class_ids and DetectedObject class_id tests passed." << std::endl;
 
     // 7. Test camera intrinsics configuration and infer populating position field
@@ -119,6 +123,27 @@ int main() {
       assert(ws_config.webserver_port == 9005);
       assert(ws_config.webserver_host == "127.0.0.1");
 
+      nlohmann::json planning_json = {
+          {"num_poses", 6},
+          {"path_step_size", 0.75},
+          {"cruise_velocity", 2.5}
+      };
+      adas::config::PerceptionConfig planning_config;
+      adas::config::from_json(planning_json, planning_config);
+      const nlohmann::json serialized_planning_config = planning_config;
+      assert(serialized_planning_config["num_poses"] == 6);
+      assert(serialized_planning_config["path_step_size"] == 0.75);
+      assert(serialized_planning_config["cruise_velocity"] == 2.5);
+
+      adas::planning::Planner planner(planning_config);
+      adas::core::WorldModel planning_world;
+      planning_world.current_lane.centerline = {.c0 = 1.0, .c1 = 0.0, .c2 = 0.0};
+      const auto trajectory = planner.plan_trajectory(planning_world);
+      assert(trajectory.points.size() == 6);
+      assert(trajectory.points[1].x == 0.75);
+      assert(trajectory.points[1].y == 1.0);
+      assert(trajectory.points[1].target_velocity == 2.5);
+
       // Verify WorldModel JSON serialization
       adas::core::WorldModel wm;
       wm.timestamp_us = 123456789;
@@ -132,6 +157,7 @@ int main() {
       obj.bounding_box = cv::Rect2f(10.0f, 20.0f, 100.0f, 200.0f);
       obj.position = {1.5, -0.2, 0.1};
       wm.obstacles.push_back(obj);
+      wm.trajectory = trajectory;
 
       nlohmann::json wm_json;
       adas::core::to_json(wm_json, wm);
@@ -141,6 +167,12 @@ int main() {
       assert(wm_json["obstacles"][0]["label"] == "bottle");
       assert(wm_json["obstacles"][0]["bounding_box"]["x"] == 10.0f);
       assert(wm_json["obstacles"][0]["position"]["x"] == 1.5);
+      assert(wm_json.contains("trajectory"));
+      assert(wm_json["trajectory"]["points"].size() == 6);
+      assert(wm_json["trajectory"]["points"][1]["x"] == 0.75);
+      assert(wm_json["trajectory"]["points"][1]["y"] == 1.0);
+      assert(wm_json["trajectory"]["points"][1]["target_velocity"] == 2.5);
+      assert(wm_json["trajectory"]["is_emergency_stop"] == false);
       std::cout << "[Test] WorldModel serialization passed: " << wm_json.dump() << std::endl;
 
       // Verify WebSocketStreamer lifecycle and broadcast

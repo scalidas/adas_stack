@@ -28,7 +28,12 @@ void to_json(nlohmann::json &j, const TrafficSign &sign);
 void to_json(nlohmann::json &j, const PolynomialLaneBoundary &poly);
 void to_json(nlohmann::json &j, const Lane &lane);
 void to_json(nlohmann::json &j, const EgoState &ego);
+void to_json(nlohmann::json &j, const TrajectoryPoint &pt);
+void to_json(nlohmann::json &j, const Trajectory &traj);
 void to_json(nlohmann::json &j, const WorldModel &wm);
+
+void from_json(const nlohmann::json &j, TrajectoryPoint &pt);
+void from_json(const nlohmann::json &j, Trajectory &traj);
 
 } // namespace adas::core
 

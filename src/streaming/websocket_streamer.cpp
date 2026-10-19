@@ -55,6 +55,39 @@ void to_json(nlohmann::json& j, const EgoState& ego) {
                        {"steering_angle", ego.steering_angle}};
 }
 
+void to_json(nlohmann::json& j, const TrajectoryPoint& pt) {
+    j = nlohmann::json{{"x", pt.x},
+                       {"y", pt.y},
+                       {"yaw", pt.yaw},
+                       {"target_velocity", pt.target_velocity}};
+}
+
+void from_json(const nlohmann::json& j, TrajectoryPoint& pt) {
+    pt.x = j.value("x", 0.0);
+    pt.y = j.value("y", 0.0);
+    pt.yaw = j.value("yaw", 0.0);
+    pt.target_velocity = j.value("target_velocity", 0.0);
+}
+
+void to_json(nlohmann::json& j, const Trajectory& traj) {
+    j = nlohmann::json{{"timestamp_us", traj.timestamp_us},
+                       {"points", traj.points},
+                       {"is_emergency_stop", traj.is_emergency_stop}};
+}
+
+void from_json(const nlohmann::json& j, Trajectory& traj) {
+    traj.timestamp_us = j.value("timestamp_us", static_cast<uint64_t>(0));
+    traj.is_emergency_stop = j.value("is_emergency_stop", false);
+    if (j.contains("points") && j["points"].is_array()) {
+        traj.points.clear();
+        for (const auto& item : j["points"]) {
+            TrajectoryPoint pt;
+            from_json(item, pt);
+            traj.points.push_back(pt);
+        }
+    }
+}
+
 void to_json(nlohmann::json& j, const WorldModel& wm) {
     j = nlohmann::json{{"timestamp_us", wm.timestamp_us},
                        {"frame_seq", wm.frame_seq},
@@ -69,7 +102,8 @@ void to_json(nlohmann::json& j, const WorldModel& wm) {
                             ? nlohmann::json(wm.right_neighbor_lane.value())
                             : nlohmann::json(nullptr)},
                        {"obstacles", wm.obstacles},
-                       {"traffic_signs", wm.traffic_signs}};
+                       {"traffic_signs", wm.traffic_signs},
+                       {"trajectory", wm.trajectory}};
 }
 
 }  // namespace adas::core

@@ -24,6 +24,7 @@ add_library(adas_stack_lib
     src/calibration/intrinsic_calibration.cpp
     src/yolo/opencv_dnn_engine.cpp
     src/streaming/websocket_streamer.cpp
+    src/planning/planner.cpp
 )
 
 target_include_directories(adas_stack_lib PUBLIC
