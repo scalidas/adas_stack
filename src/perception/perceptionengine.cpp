@@ -4,6 +4,7 @@
 
 #include "calibration/extrinsic_calibration.hpp"
 #include "config/config.hpp"
+#include "controller/stanley_controller.hpp"
 #include "core/core_types.hpp"
 #include "perception/lane_detection.hpp"
 #include "perception/perceptionengine.hpp"
@@ -11,6 +12,10 @@
 #include "streaming/websocket_streamer.hpp"
 #include "yolo/inference_engine.hpp"
 #include "yolo/opencv_dnn_engine.hpp"
+
+#ifdef ADAS_WITH_TENSORRT
+#include "yolo/tensorrt_engine.hpp"
+#endif  // ADAS_WITH_TENSORRT
 
 static bool is_left(const adas::core::PolynomialLaneBoundary& a,
                     const adas::core::PolynomialLaneBoundary& b) {
@@ -39,21 +44,51 @@ PerceptionEngine::~PerceptionEngine() {
 PerceptionEngine::PerceptionEngine(const adas::config::PerceptionConfig& cfg) {
     config = cfg;
 
-    inference_engine =
-        std::make_unique<adas::yolo::OpenCVDNNEngine>(config.model_path);
+    // Select inference backend based on config.engine_type
+    // Supported values: "opencv" (default), "tensorrt" / "trt" (requires
+    // the ADAS_WITH_TENSORRT build flag).
+#ifdef ADAS_WITH_TENSORRT
+    if (config.engine_type == "tensorrt" || config.engine_type == "trt") {
+        auto* trt_engine = new adas::yolo::TensorRTEngine(config.model_path,
+                                                          0.25f, 0.45f);
+        inference_engine.reset(trt_engine);
 
-    if (auto* dnn_engine = dynamic_cast<adas::yolo::OpenCVDNNEngine*>(
-            inference_engine.get())) {
         if (!config.intrinsics_path.empty()) {
-            dnn_engine->loadCameraIntrinsics(config.intrinsics_path);
+            trt_engine->loadCameraIntrinsics(config.intrinsics_path);
         }
         if (!config.extrinsics_path.empty()) {
-            dnn_engine->loadExtrinsicCalibration(config.extrinsics_path);
+            trt_engine->loadExtrinsicCalibration(config.extrinsics_path);
         }
-        dnn_engine->setObjectRealHeight(config.object_real_height);
+        trt_engine->setObjectRealHeight(config.object_real_height);
         if (!config.class_real_heights.empty()) {
-            dnn_engine->setClassRealHeights(config.class_real_heights);
+            trt_engine->setClassRealHeights(config.class_real_heights);
         }
+        std::cout << "[PerceptionEngine] Using TensorRT inference backend.\n";
+    } else
+#endif  // ADAS_WITH_TENSORRT
+    {
+        if (config.engine_type != "opencv" && !config.engine_type.empty()) {
+            std::cerr << "[PerceptionEngine] Unknown engine_type \""
+                      << config.engine_type
+                      << "\". Falling back to OpenCV DNN.\n";
+        }
+        inference_engine =
+            std::make_unique<adas::yolo::OpenCVDNNEngine>(config.model_path);
+
+        if (auto* dnn_engine = dynamic_cast<adas::yolo::OpenCVDNNEngine*>(
+                inference_engine.get())) {
+            if (!config.intrinsics_path.empty()) {
+                dnn_engine->loadCameraIntrinsics(config.intrinsics_path);
+            }
+            if (!config.extrinsics_path.empty()) {
+                dnn_engine->loadExtrinsicCalibration(config.extrinsics_path);
+            }
+            dnn_engine->setObjectRealHeight(config.object_real_height);
+            if (!config.class_real_heights.empty()) {
+                dnn_engine->setClassRealHeights(config.class_real_heights);
+            }
+        }
+        std::cout << "[PerceptionEngine] Using OpenCV DNN inference backend.\n";
     }
 
     if (!config.target_class_ids.empty()) {
@@ -297,8 +332,9 @@ bool PerceptionEngine::runLiveDemo() {
         << "[PerceptionEngine] Live demo running. Press 'q' or 'ESC' to exit."
         << std::endl;
 
-    //Include planner
+    // Include planner and controller
     adas::planning::Planner planner(config);
+    adas::controller::StanleyController controller(config);
 
     while (true) {
         cap >> raw_frame;
@@ -321,7 +357,13 @@ bool PerceptionEngine::runLiveDemo() {
 
         world_model.trajectory = planner.plan_trajectory(world_model);
 
-        // Serialize and broadcast worldmodel over network through webserver
+        // Compute vehicle control command using Stanley controller
+        adas::core::VehicleControlCommand control_cmd =
+            controller.compute_control_command(world_model.trajectory,
+                                               world_model.ego_state);
+        world_model.control_command = control_cmd;
+
+        // Serialize and broadcast worldmodel (with embedded control command) over network through webserver
         if (is_webserver_running()) {
             broadcast_world_model(world_model);
         }
@@ -478,6 +520,20 @@ bool PerceptionEngine::runLiveDemo() {
                        world_model.obstacles.size(), ws_hud.c_str());
         cv::putText(display_frame, hud_info, cv::Point(10, 20),
                     cv::FONT_HERSHEY_SIMPLEX, 0.50, cv::Scalar(0, 255, 255), 1,
+                    cv::LINE_AA);
+
+        // Bottom HUD bar (Stanley Controller)
+        cv::rectangle(display_frame, cv::Point(0, display_frame.rows - 28),
+                      cv::Point(display_frame.cols, display_frame.rows),
+                      cv::Scalar(25, 25, 25), cv::FILLED);
+        std::string hud_ctrl = cv::format(
+            "Stanley: Steer=%.2f deg (%.3f rad) | Target V=%.2f m/s | Brake=%s",
+            control_cmd.target_steering_angle * 180.0 / 3.14159265358979323846,
+            control_cmd.target_steering_angle,
+            control_cmd.target_velocity,
+            control_cmd.emergency_brake ? "YES" : "NO");
+        cv::putText(display_frame, hud_ctrl, cv::Point(10, display_frame.rows - 8),
+                    cv::FONT_HERSHEY_SIMPLEX, 0.50, cv::Scalar(0, 255, 100), 1,
                     cv::LINE_AA);
 
         cv::imshow(window_name, display_frame);

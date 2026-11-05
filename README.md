@@ -4,10 +4,20 @@ L2+ ADAS Stack for mini autonomous vehicle.
 
 ### Usage
 
-#### Compile
+#### Compile on Windows
 ```
 cmake -B build
 cmake --build build --config Release
+```
+
+#### Compile on Jetson
+```
+cmake -B build \
+  -DADAS_WITH_TENSORRT=ON \
+  -DTENSORRT_ROOT=/opt/TensorRT-10.x \
+  -DCUDA_TOOLKIT_ROOT_DIR=/usr/local/cuda \
+  ..
+cmake --build build -j$(nproc)
 ```
 
 #### Compile with Ninja (Windows)
@@ -15,6 +25,12 @@ cmake --build build --config Release
 ```
 cmake -G "Ninja" -DCMAKE_BUILD_TYPE=Release .
 cmake --build build
+```
+
+#### Perception Demo
+
+```
+.\build\Release\adas_stack.exe perception_demo --config config/live_perception_demo.json
 ```
 
 #### Detect Lane

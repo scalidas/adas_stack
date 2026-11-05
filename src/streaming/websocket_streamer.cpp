@@ -88,6 +88,22 @@ void from_json(const nlohmann::json& j, Trajectory& traj) {
     }
 }
 
+void to_json(nlohmann::json& j, const VehicleControlCommand& cmd) {
+    j = nlohmann::json{{"timestamp_us", cmd.timestamp_us},
+                       {"target_steering_angle", cmd.target_steering_angle},
+                       {"target_velocity", cmd.target_velocity},
+                       {"target_acceleration", cmd.target_acceleration},
+                       {"emergency_brake", cmd.emergency_brake}};
+}
+
+void from_json(const nlohmann::json& j, VehicleControlCommand& cmd) {
+    cmd.timestamp_us = j.value("timestamp_us", 0ULL);
+    cmd.target_steering_angle = j.value("target_steering_angle", 0.0);
+    cmd.target_velocity = j.value("target_velocity", 0.0);
+    cmd.target_acceleration = j.value("target_acceleration", 0.0);
+    cmd.emergency_brake = j.value("emergency_brake", false);
+}
+
 void to_json(nlohmann::json& j, const WorldModel& wm) {
     j = nlohmann::json{{"timestamp_us", wm.timestamp_us},
                        {"frame_seq", wm.frame_seq},
@@ -103,7 +119,11 @@ void to_json(nlohmann::json& j, const WorldModel& wm) {
                             : nlohmann::json(nullptr)},
                        {"obstacles", wm.obstacles},
                        {"traffic_signs", wm.traffic_signs},
-                       {"trajectory", wm.trajectory}};
+                       {"trajectory", wm.trajectory},
+                       {"control_command",
+                        wm.control_command.has_value()
+                            ? nlohmann::json(wm.control_command.value())
+                            : nlohmann::json(nullptr)}};
 }
 
 }  // namespace adas::core

@@ -43,6 +43,12 @@ struct PerceptionConfig {
   int num_poses{20};
   double path_step_size{0.5};
   double cruise_velocity{1.0};
+
+  // Controller fields
+  double stanley_k{1.0};
+  double max_steering_angle{0.5235987755982988};
+  double softening_constant{0.1};
+  double wheelbase{0.0};
 };
 
 inline void to_json(nlohmann::json &j, const PerceptionConfig &c) {
@@ -69,7 +75,12 @@ inline void to_json(nlohmann::json &j, const PerceptionConfig &c) {
                      {"webserver_logging", c.webserver_logging},
                      {"num_poses", c.num_poses},
                      {"path_step_size", c.path_step_size},
-                     {"cruise_velocity", c.cruise_velocity}};
+                     {"cruise_velocity", c.cruise_velocity},
+                     {"stanley_k", c.stanley_k},
+                     {"stanley_constant", c.stanley_k},
+                     {"max_steering_angle", c.max_steering_angle},
+                     {"softening_constant", c.softening_constant},
+                     {"wheelbase", c.wheelbase}};
   if (!c.class_real_heights.empty()) {
     nlohmann::json crh = nlohmann::json::object();
     for (const auto &[k, v] : c.class_real_heights) {
@@ -101,6 +112,21 @@ inline void from_json(const nlohmann::json &j, PerceptionConfig &c) {
   c.num_poses = j.value("num_poses", c.num_poses);
   c.path_step_size = j.value("path_step_size", c.path_step_size);
   c.cruise_velocity = j.value("cruise_velocity", c.cruise_velocity);
+
+  if (j.contains("stanley_k")) {
+    c.stanley_k = j["stanley_k"].get<double>();
+  } else if (j.contains("stanley_constant")) {
+    c.stanley_k = j["stanley_constant"].get<double>();
+  } else if (j.contains("stanley_coefficient")) {
+    c.stanley_k = j["stanley_coefficient"].get<double>();
+  } else if (j.contains("stanley_gain")) {
+    c.stanley_k = j["stanley_gain"].get<double>();
+  } else if (j.contains("k")) {
+    c.stanley_k = j["k"].get<double>();
+  }
+  c.max_steering_angle = j.value("max_steering_angle", c.max_steering_angle);
+  c.softening_constant = j.value("softening_constant", c.softening_constant);
+  c.wheelbase = j.value("wheelbase", c.wheelbase);
 
   if (j.contains("enable_webserver")) {
     c.enable_webserver = j["enable_webserver"].get<bool>();

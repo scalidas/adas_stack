@@ -132,6 +132,7 @@ struct WorldModel {
     std::vector<TrafficSign> traffic_signs;
 
     Trajectory trajectory;
+    std::optional<VehicleControlCommand> control_command;
 };
 
 }  // namespace adas::core

@@ -8,6 +8,14 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+# ---------------------------------------------------------------------------
+# Optional TensorRT backend
+#   cmake -DADAS_WITH_TENSORRT=ON \
+#         -DTENSORRT_ROOT=/path/to/TensorRT \
+#         -DCUDA_TOOLKIT_ROOT_DIR=/usr/local/cuda ..
+# ---------------------------------------------------------------------------
+option(ADAS_WITH_TENSORRT "Build the TensorRT inference backend" OFF)
+
 # Find Required Packages
 find_package(Eigen3 REQUIRED)
 find_package(OpenCV REQUIRED)
@@ -25,6 +33,7 @@ add_library(adas_stack_lib
     src/yolo/opencv_dnn_engine.cpp
     src/streaming/websocket_streamer.cpp
     src/planning/planner.cpp
+    src/controller/stanley_controller.cpp
 )
 
 target_include_directories(adas_stack_lib PUBLIC
@@ -40,6 +49,69 @@ target_link_libraries(adas_stack_lib PUBLIC
     asio::asio
 )
 
+# ---------------------------------------------------------------------------
+# TensorRT backend (only compiled when ADAS_WITH_TENSORRT=ON)
+# ---------------------------------------------------------------------------
+if(ADAS_WITH_TENSORRT)
+    # --- CUDA ---------------------------------------------------------------
+    find_package(CUDAToolkit REQUIRED)
+
+    # --- TensorRT headers & libraries ---------------------------------------
+    # Set TENSORRT_ROOT on the cmake command line if TRT is not in a standard
+    # system path, e.g.:  -DTENSORRT_ROOT=/opt/TensorRT-10.x
+    if(NOT DEFINED TENSORRT_ROOT)
+        set(TENSORRT_ROOT "" CACHE PATH "Root directory of the TensorRT installation")
+    endif()
+
+    find_path(TENSORRT_INCLUDE_DIR
+        NAMES NvInfer.h
+        HINTS ${TENSORRT_ROOT}/include
+        PATH_SUFFIXES include
+    )
+
+    find_library(TENSORRT_NVINFER_LIB
+        NAMES nvinfer
+        HINTS ${TENSORRT_ROOT}/lib
+        PATH_SUFFIXES lib lib64
+    )
+
+    find_library(TENSORRT_NVONNXPARSER_LIB
+        NAMES nvonnxparser
+        HINTS ${TENSORRT_ROOT}/lib
+        PATH_SUFFIXES lib lib64
+    )
+
+    if(NOT TENSORRT_INCLUDE_DIR OR
+       NOT TENSORRT_NVINFER_LIB   OR
+       NOT TENSORRT_NVONNXPARSER_LIB)
+        message(FATAL_ERROR
+            "[ADAS] ADAS_WITH_TENSORRT=ON but TensorRT libraries were not found.\n"
+            "  Set -DTENSORRT_ROOT=/path/to/TensorRT on the cmake command line.")
+    endif()
+
+    message(STATUS "[ADAS] TensorRT include : ${TENSORRT_INCLUDE_DIR}")
+    message(STATUS "[ADAS] nvinfer          : ${TENSORRT_NVINFER_LIB}")
+    message(STATUS "[ADAS] nvonnxparser     : ${TENSORRT_NVONNXPARSER_LIB}")
+
+    # Add the TRT source to the library
+    target_sources(adas_stack_lib PRIVATE src/yolo/tensorrt_engine.cpp)
+
+    target_include_directories(adas_stack_lib PUBLIC
+        ${TENSORRT_INCLUDE_DIR}
+    )
+
+    target_link_libraries(adas_stack_lib PUBLIC
+        CUDA::cudart
+        ${TENSORRT_NVINFER_LIB}
+        ${TENSORRT_NVONNXPARSER_LIB}
+    )
+
+    target_compile_definitions(adas_stack_lib PUBLIC ADAS_WITH_TENSORRT)
+
+    message(STATUS "[ADAS] TensorRT backend enabled.")
+else()
+    message(STATUS "[ADAS] TensorRT backend disabled (pass -DADAS_WITH_TENSORRT=ON to enable).")
+endif()
 
 # Compiler Warnings
 if(MSVC)
@@ -55,10 +127,14 @@ add_executable(adas_stack
 
 target_link_libraries(adas_stack PRIVATE adas_stack_lib)
 
-# Test Executable Target
+# Test Executable Targets
 add_executable(test_opencv_dnn_engine
     tests/test_opencv_dnn_engine.cpp
 )
-
 target_link_libraries(test_opencv_dnn_engine PRIVATE adas_stack_lib)
+
+add_executable(test_stanley_controller
+    tests/test_stanley_controller.cpp
+)
+target_link_libraries(test_stanley_controller PRIVATE adas_stack_lib)
 
