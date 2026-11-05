@@ -19,7 +19,45 @@ option(ADAS_WITH_TENSORRT "Build the TensorRT inference backend" OFF)
 # Find Required Packages
 find_package(Eigen3 REQUIRED)
 find_package(OpenCV REQUIRED)
-find_package(asio CONFIG REQUIRED)
+
+# For ASIO, look through system paths for the headers
+set(_ASIO_BUNDLED_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/asio")
+
+if(EXISTS "${_ASIO_BUNDLED_DIR}/asio.hpp")
+    set(ASIO_INCLUDE_DIR "${_ASIO_BUNDLED_DIR}")
+    message(STATUS "[ADAS] Asio: using bundled headers (${ASIO_INCLUDE_DIR})")
+else()
+    find_path(ASIO_INCLUDE_DIR
+        NAMES asio.hpp
+        PATHS
+            /usr/include
+            /usr/local/include
+            /opt/local/include
+        DOC "Path to standalone asio headers"
+    )
+
+    if(ASIO_INCLUDE_DIR)
+        message(STATUS "[ADAS] Asio: found system headers (${ASIO_INCLUDE_DIR})")
+    else()
+        message(STATUS "[ADAS] Asio: not found locally -- fetching from GitHub...")
+        include(FetchContent)
+        FetchContent_Declare(asio_fetch
+            URL      https://github.com/chriskohlhoff/asio/archive/refs/tags/asio-1-30-2.tar.gz
+        )
+        FetchContent_MakeAvailable(asio_fetch)
+        set(ASIO_INCLUDE_DIR "${asio_fetch_SOURCE_DIR}/asio/include")
+        message(STATUS "[ADAS] Asio: fetched to ${ASIO_INCLUDE_DIR}")
+    endif()
+endif()
+
+# INTERFACE target so all dependents just link adas_asio
+add_library(adas_asio INTERFACE)
+target_include_directories(adas_asio INTERFACE "${ASIO_INCLUDE_DIR}")
+target_compile_definitions(adas_asio INTERFACE ASIO_STANDALONE)
+# Windows requires an explicit minimum platform version for asio socket APIs
+if(WIN32)
+    target_compile_definitions(adas_asio INTERFACE _WIN32_WINNT=0x0601)
+endif()
 
 # Project Library Target
 add_library(adas_stack_lib
@@ -44,7 +82,7 @@ target_include_directories(adas_stack_lib PUBLIC
 target_link_libraries(adas_stack_lib PUBLIC
     Eigen3::Eigen
     ${OpenCV_LIBS}
-    asio::asio
+    adas_asio
 )
 
 # ---------------------------------------------------------------------------

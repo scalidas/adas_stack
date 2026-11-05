@@ -2,13 +2,8 @@
 
 #include "core/core_types.hpp"
 #include <nlohmann/json.hpp>
-#ifndef ASIO_STANDALONE
-#define ASIO_STANDALONE
-#endif
-#ifndef _WEBSOCKETPP_CPP11_STL_
-#define _WEBSOCKETPP_CPP11_STL_
-#endif
-
+// ASIO_STANDALONE and _WEBSOCKETPP_CPP11_STL_ are set by the CMake build
+// system via the adas_asio INTERFACE target -- no manual #define needed here.
 #include <websocketpp/config/asio_no_tls.hpp>
 #include <websocketpp/server.hpp>
 
