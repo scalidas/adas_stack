@@ -574,46 +574,96 @@ bool TensorRTEngine::runLiveDemo(
         cap.set(cv::CAP_PROP_FRAME_HEIGHT, calib_h_);
     }
 
-    std::cout << "[TensorRTEngine] Starting live demo on webcam "
-              << config.webcam_id << ". Press 'q' or ESC to exit.\n";
+    // -------------------------------------------------------------------------
+    // Precompute undistortion remap maps once so we call the fast cv::remap()
+    // each frame instead of the slow cv::undistort() (which recomputes maps
+    // internally on every single call -- the dominant cost at 1080p on CPU).
+    // -------------------------------------------------------------------------
+    cv::Mat remap_map1, remap_map2;
+    bool has_remap = false;
+
+    if (!camera_matrix_.empty() && !dist_coeffs_.empty()) {
+        // Grab the actual capture resolution (may differ from calib resolution)
+        cv::Mat probe_frame;
+        cap >> probe_frame;
+        if (!probe_frame.empty()) {
+            const int fw = probe_frame.cols;
+            const int fh = probe_frame.rows;
+
+            // Scale camera matrix to match actual capture resolution
+            cv::Mat K = camera_matrix_.clone();
+            if (fw != calib_w_ || fh != calib_h_) {
+                const double sx = static_cast<double>(fw) / calib_w_;
+                const double sy = static_cast<double>(fh) / calib_h_;
+                K.at<double>(0, 0) *= sx;  // fx
+                K.at<double>(0, 2) *= sx;  // cx
+                K.at<double>(1, 1) *= sy;  // fy
+                K.at<double>(1, 2) *= sy;  // cy
+            }
+
+            cv::initUndistortRectifyMap(
+                K, dist_coeffs_,
+                cv::Mat(),          // no rectification rotation
+                K,                  // same output camera matrix
+                cv::Size(fw, fh),
+                CV_16SC2,           // fixed-point map — fastest for remap()
+                remap_map1, remap_map2);
+
+            has_remap = true;
+            std::printf("[TensorRTEngine] Precomputed undistort remap maps "
+                        "for %dx%d frames.\n", fw, fh);
+
+            // Push the probe frame back into processing below
+            // (we'll handle it as the first loop iteration)
+            // Re-open is simpler than buffering; re-read on first iteration.
+        }
+    }
+
+    std::printf("[TensorRTEngine] Starting live demo on webcam %d. "
+                "Press 'q' or ESC to exit.\n", config.webcam_id);
 
     const std::string window_name = "ADAS TensorRT Live Demo";
     cv::namedWindow(window_name, cv::WINDOW_AUTOSIZE);
 
+    // Loop-level timing -------------------------------------------------------
+    using Clock = std::chrono::steady_clock;
+    using Ms    = std::chrono::duration<double, std::milli>;
+    auto elapsed_ms = [](Clock::time_point a, Clock::time_point b) -> double {
+        return std::chrono::duration_cast<Ms>(b - a).count();
+    };
+
+    static uint32_t loop_idx = 0;
+    constexpr uint32_t kLoopLogInterval = 30;
+
     cv::Mat raw_frame, frame;
     while (true) {
+        auto tL0 = Clock::now();
+
+        // ---- Capture --------------------------------------------------------
         cap >> raw_frame;
         if (raw_frame.empty()) {
             std::cerr << "[TensorRTEngine] Warning: empty frame captured.\n";
             break;
         }
 
-        // Undistort if calibration is available
-        double cur_fx, cur_fy, cur_cx, cur_cy;
-        scaledIntrinsics(raw_frame.cols, raw_frame.rows,
-                         cur_fx, cur_fy, cur_cx, cur_cy);
+        auto tL1 = Clock::now();
 
-        cv::Mat scaled_K;
-        if (!camera_matrix_.empty()) {
-            scaled_K = camera_matrix_.clone();
-            const double sx =
-                static_cast<double>(raw_frame.cols) / calib_w_;
-            const double sy =
-                static_cast<double>(raw_frame.rows) / calib_h_;
-            scaled_K.at<double>(0, 0) *= sx;
-            scaled_K.at<double>(0, 2) *= sx;
-            scaled_K.at<double>(1, 1) *= sy;
-            scaled_K.at<double>(1, 2) *= sy;
-        }
-
-        if (!scaled_K.empty() && !dist_coeffs_.empty()) {
-            cv::undistort(raw_frame, frame, scaled_K, dist_coeffs_);
+        // ---- Undistort (fast remap path) ------------------------------------
+        if (has_remap) {
+            cv::remap(raw_frame, frame, remap_map1, remap_map2,
+                      cv::INTER_LINEAR);
         } else {
             frame = raw_frame;
         }
 
+        auto tL2 = Clock::now();
+
+        // ---- TRT inference (internally timed every 30 frames) ---------------
         auto detections = infer(frame);
 
+        auto tL3 = Clock::now();
+
+        // ---- Draw overlays --------------------------------------------------
         size_t rendered_count = 0;
         for (const auto& obj : detections) {
             if (!config.target_class_ids.empty()) {
@@ -645,8 +695,7 @@ bool TensorRTEngine::runLiveDemo(
             cv::Size s2 = cv::getTextSize(line2, font, sc, th, &b2);
             int bw = std::max(s1.width, s2.width) + 8;
             int bh = s1.height + s2.height + 8;
-            int bx = std::clamp(bbox_int.x, 0,
-                                std::max(0, frame.cols - bw));
+            int bx = std::clamp(bbox_int.x, 0, std::max(0, frame.cols - bw));
             int by = std::max(bh + 2, bbox_int.y);
 
             cv::rectangle(frame, cv::Point(bx, by - bh),
@@ -666,10 +715,35 @@ bool TensorRTEngine::runLiveDemo(
         cv::putText(frame, hud, cv::Point(15, 25), cv::FONT_HERSHEY_SIMPLEX,
                     0.55, cv::Scalar(0, 128, 255), 2);
 
+        auto tL4 = Clock::now();
+
+        // ---- Display --------------------------------------------------------
         cv::imshow(window_name, frame);
         const int key = cv::waitKey(1);
+
+        auto tL5 = Clock::now();
+
+        // ---- Loop timing log ------------------------------------------------
+        ++loop_idx;
+        if (loop_idx % kLoopLogInterval == 0) {
+            const double ms_cap     = elapsed_ms(tL0, tL1);
+            const double ms_undist  = elapsed_ms(tL1, tL2);
+            const double ms_infer   = elapsed_ms(tL2, tL3);
+            const double ms_draw    = elapsed_ms(tL3, tL4);
+            const double ms_display = elapsed_ms(tL4, tL5);
+            const double ms_total   = elapsed_ms(tL0, tL5);
+
+            std::printf(
+                "[LOOP timing #%u]  cap=%.1fms  undist=%.1fms  infer=%.1fms"
+                "  draw=%.1fms  display=%.1fms  | total=%.1fms (%.1f fps)\n",
+                loop_idx,
+                ms_cap, ms_undist, ms_infer, ms_draw, ms_display,
+                ms_total, 1000.0 / ms_total);
+            std::fflush(stdout);
+        }
+
         if (key == 27 || key == 'q' || key == 'Q') {
-            std::cout << "[TensorRTEngine] Live demo stopped by user.\n";
+            std::printf("[TensorRTEngine] Live demo stopped by user.\n");
             break;
         }
     }
@@ -677,7 +751,6 @@ bool TensorRTEngine::runLiveDemo(
     cv::destroyWindow(window_name);
     return true;
 }
-
 bool TensorRTEngine::runLiveDemo(int webcam_id,
                                  const std::string& intrinsics_path) {
     adas::config::PerceptionConfig config;
