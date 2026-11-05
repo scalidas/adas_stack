@@ -7,6 +7,8 @@
 #include <cuda_runtime_api.h>
 
 #include <algorithm>
+#include <chrono>
+#include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -280,7 +282,7 @@ bool TensorRTEngine::loadEnginePlan(const std::string& plan_path) {
 }
 
 // ---------------------------------------------------------------------------
-// infer
+// infer  (with per-stage timing, printed every 30 frames)
 // ---------------------------------------------------------------------------
 std::vector<adas::core::DetectedObject> TensorRTEngine::infer(
     const cv::Mat& frame) {
@@ -290,8 +292,20 @@ std::vector<adas::core::DetectedObject> TensorRTEngine::infer(
         return detections;
     }
 
+    // Helpers -----------------------------------------------------------------
+    using Clock = std::chrono::steady_clock;
+    using Ms    = std::chrono::duration<double, std::milli>;
+    auto elapsed_ms = [](Clock::time_point a, Clock::time_point b) -> double {
+        return std::chrono::duration_cast<Ms>(b - a).count();
+    };
+
+    static uint32_t frame_idx = 0;
+    constexpr uint32_t kLogInterval = 30; // print timing summary every N frames
+
     try {
-        // ---- Pre-process: resize → float [0,1] → CHW layout ---------------
+        // ---- 1. Pre-process: resize -> float [0,1] -> CHW layout -----------
+        auto t0 = Clock::now();
+
         cv::Mat resized;
         cv::resize(frame, resized, cv::Size(input_width_, input_height_));
 
@@ -315,18 +329,26 @@ std::vector<adas::core::DetectedObject> TensorRTEngine::infer(
                         channel_size * sizeof(float));
         }
 
-        // Copy input to device
+        auto t1 = Clock::now();
+
+        // ---- 2. Host -> Device copy ----------------------------------------
         CUDA_CHECK(cudaMemcpy(device_buffers_[static_cast<size_t>(input_binding_idx_)],
                               input_blob.data(), input_bytes,
                               cudaMemcpyHostToDevice));
 
-        // ---- Execute -------------------------------------------------------
+        auto t2 = Clock::now();
+
+        // ---- 3. GPU inference ----------------------------------------------
         if (!context_->executeV2(device_buffers_.data())) {
             std::cerr << "[TensorRTEngine] executeV2 failed.\n";
             return detections;
         }
+        // Synchronise so the timer reflects actual GPU work, not just kernel launch
+        cudaDeviceSynchronize();
 
-        // Copy output back to host
+        auto t3 = Clock::now();
+
+        // ---- 4. Device -> Host copy ----------------------------------------
         const size_t output_bytes =
             static_cast<size_t>(output_num_channels_) *
             static_cast<size_t>(output_num_anchors_) * sizeof(float);
@@ -335,10 +357,33 @@ std::vector<adas::core::DetectedObject> TensorRTEngine::infer(
                        device_buffers_[static_cast<size_t>(output_binding_idx_)],
                        output_bytes, cudaMemcpyDeviceToHost));
 
-        // ---- Post-process --------------------------------------------------
+        auto t4 = Clock::now();
+
+        // ---- 5. Post-process (CPU NMS + depth estimation) ------------------
         detections = postprocess(host_output_buffer_.data(),
                                  output_num_channels_, output_num_anchors_,
                                  frame.cols, frame.rows);
+
+        auto t5 = Clock::now();
+
+        // ---- Timing log (every kLogInterval frames) ------------------------
+        ++frame_idx;
+        if (frame_idx % kLogInterval == 0) {
+            const double ms_pre   = elapsed_ms(t0, t1);
+            const double ms_h2d   = elapsed_ms(t1, t2);
+            const double ms_infer = elapsed_ms(t2, t3);
+            const double ms_d2h   = elapsed_ms(t3, t4);
+            const double ms_post  = elapsed_ms(t4, t5);
+            const double ms_total = elapsed_ms(t0, t5);
+
+            std::printf(
+                "[TRT timing #%u]  pre=%.1fms  H2D=%.1fms  infer=%.1fms"
+                "  D2H=%.1fms  post=%.1fms  | total=%.1fms (%.1f fps)\n",
+                frame_idx,
+                ms_pre, ms_h2d, ms_infer, ms_d2h, ms_post,
+                ms_total, 1000.0 / ms_total);
+            std::fflush(stdout);
+        }
 
     } catch (const std::exception& e) {
         std::cerr << "[TensorRTEngine] Exception during infer: " << e.what()
@@ -347,7 +392,6 @@ std::vector<adas::core::DetectedObject> TensorRTEngine::infer(
 
     return detections;
 }
-
 // ---------------------------------------------------------------------------
 // postprocess — YOLOv8 output layout: [num_channels, num_anchors]
 //               channels 0-3: cx, cy, w, h (in input-space pixels)
