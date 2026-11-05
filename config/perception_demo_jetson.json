@@ -1,0 +1,26 @@
+{
+    "intrinsics_path": "assets/calibration/intrinsic/emeet/emeet_intrinsics.xml",
+    "extrinsics_path": "assets/calibration/extrinsic/emeet/emeet_calibration_2.xml",
+    "min_inlier_count": 100,
+    "ransac_inlier_threshold": 50.0,
+    "ransac_iterations": 150,
+    "white_pixel_threshold": 150,
+    "model_path": "models/yolov8n.onnx",
+    "engine_type": "tensorrt",
+    "webcam_id": 0,
+    "target_class_ids": [
+        39,
+        11
+    ],
+    "class_real_heights": {
+        "39": 0.2,
+        "11" : 0.07
+    },
+    "enable_webserver": true,
+    "webserver_port": 9002,
+    "webserver_host": "0.0.0.0",
+    "webserver_logging": false,
+    "num_poses": 10,
+    "path_step_size": 0.1,
+    "cruise_velocity": 1.0
+}
