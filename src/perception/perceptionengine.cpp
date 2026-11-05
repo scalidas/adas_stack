@@ -1,3 +1,4 @@
+#include <cstdio>
 #include <chrono>
 #include <opencv2/imgproc.hpp>
 #include <thread>
@@ -246,6 +247,10 @@ std::vector<adas::core::TrackedObject> PerceptionEngine::process_obstacles(
     return result;
 }
 
+
+static double s_last_lanes_ms = 0.0;
+static double s_last_yolo_ms = 0.0;
+
 adas::core::WorldModel PerceptionEngine::process_frame(const cv::Mat& frame) {
     std::optional<adas::core::Lane> lane;
     std::vector<adas::core::TrackedObject> detected_objects;
@@ -253,11 +258,22 @@ adas::core::WorldModel PerceptionEngine::process_frame(const cv::Mat& frame) {
     {
         // worker writes to its own dedicated stack variable
         std::jthread worker(
-            [&lane, &frame, this] { lane = process_lanes(frame); });
+            [&lane, &frame, this] {
+                auto t0 = std::chrono::steady_clock::now();
+                lane = process_lanes(frame);
+                auto t1 = std::chrono::steady_clock::now();
+                s_last_lanes_ms =
+                    std::chrono::duration<double, std::milli>(t1 - t0).count();
+            });
 
         // Main thread computes the other field locally
+        auto ty0 = std::chrono::steady_clock::now();
         detected_objects = process_obstacles(frame);
+        auto ty1 = std::chrono::steady_clock::now();
+        s_last_yolo_ms =
+            std::chrono::duration<double, std::milli>(ty1 - ty0).count();
     }
+
 
     adas::core::WorldModel world_model;
 
@@ -336,13 +352,20 @@ bool PerceptionEngine::runLiveDemo() {
     adas::planning::Planner planner(config);
     adas::controller::StanleyController controller(config);
 
+    using Clock = std::chrono::steady_clock;
+    uint32_t demo_frame_idx = 0;
+    constexpr uint32_t kDemoLogInterval = 30;
+
     while (true) {
+        auto t0 = Clock::now();
         cap >> raw_frame;
         if (raw_frame.empty()) {
             std::cerr << "[PerceptionEngine] Warning: Captured empty frame."
                       << std::endl;
             break;
         }
+
+        auto t_cap = Clock::now();
 
         // Standardize input frame to 640x480 matching the homography IPM model
         cv::Mat frame;
@@ -351,9 +374,11 @@ bool PerceptionEngine::runLiveDemo() {
         } else {
             frame = raw_frame;
         }
+        auto t_resize = Clock::now();
 
         // Process frame through PerceptionEngine
         adas::core::WorldModel world_model = process_frame(frame);
+        auto t_proc = Clock::now();
 
         world_model.trajectory = planner.plan_trajectory(world_model);
 
@@ -367,6 +392,7 @@ bool PerceptionEngine::runLiveDemo() {
         if (is_webserver_running()) {
             broadcast_world_model(world_model);
         }
+        auto t_plan = Clock::now();
 
         // Prepare visualization canvas
         cv::Mat display_frame = frame.clone();
@@ -536,9 +562,29 @@ bool PerceptionEngine::runLiveDemo() {
                     cv::FONT_HERSHEY_SIMPLEX, 0.50, cv::Scalar(0, 255, 100), 1,
                     cv::LINE_AA);
 
+        auto t_draw = Clock::now();
+
         cv::imshow(window_name, display_frame);
 
         int key = cv::waitKey(1);
+        auto t_show = Clock::now();
+
+        ++demo_frame_idx;
+        if (demo_frame_idx % kDemoLogInterval == 0) {
+            double ms_cap = std::chrono::duration<double, std::milli>(t_cap - t0).count();
+            double ms_proc = std::chrono::duration<double, std::milli>(t_proc - t_resize).count();
+            double ms_plan = std::chrono::duration<double, std::milli>(t_plan - t_proc).count();
+            double ms_draw = std::chrono::duration<double, std::milli>(t_draw - t_plan).count();
+            double ms_show = std::chrono::duration<double, std::milli>(t_show - t_draw).count();
+            double ms_total = std::chrono::duration<double, std::milli>(t_show - t0).count();
+
+            std::printf(
+                "[PerceptionEngine #%u] cap=%.1fms  lanes(worker)=%.1fms  yolo(main)=%.1fms  proc_join=%.1fms  plan=%.1fms  draw=%.1fms  display=%.1fms | total=%.1fms (%.1f fps)\n",
+                demo_frame_idx, ms_cap, s_last_lanes_ms, s_last_yolo_ms, ms_proc, ms_plan, ms_draw, ms_show,
+                ms_total, (ms_total > 0.0 ? 1000.0 / ms_total : 0.0));
+            std::fflush(stdout);
+        }
+
         if (key == 27 || key == 'q' || key == 'Q') {
             std::cout << "[PerceptionEngine] Live demo stopped by user."
                       << std::endl;

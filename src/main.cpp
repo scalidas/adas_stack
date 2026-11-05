@@ -10,6 +10,10 @@
 #include "perception/road_object.hpp"
 #include "yolo/opencv_dnn_engine.hpp"
 
+#ifdef ADAS_WITH_TENSORRT
+#include "yolo/tensorrt_engine.hpp"
+#endif
+
 #include "core/core_types.hpp"
 
 enum mode {
@@ -151,6 +155,10 @@ int main(int argc, char** argv) {
             // Instantiate correct DL backend
             if (config.engine_type == "opencv") {
                 engine = std::make_unique<adas::yolo::OpenCVDNNEngine>();
+#ifdef ADAS_WITH_TENSORRT
+            } else if (config.engine_type == "tensorrt" || config.engine_type == "trt") {
+                engine = std::make_unique<adas::yolo::TensorRTEngine>();
+#endif
             } else {
                 std::cerr << "[Main] Unknown YOLO engine type: "
                           << config.engine_type << std::endl;
