@@ -1,3 +1,5 @@
+#include <chrono>
+#include <cstdio>
 #include "perception/lane_detection.hpp"
 #include <Eigen/Dense>
 #include <algorithm>
@@ -44,10 +46,15 @@ RANSAC based polynomial fitting for lane lines
 std::vector<adas::core::PolynomialLaneBoundary>
 fitLaneRANSAC(std::vector<cv::Point2f> input_points, int max_iters = 150,
               float inlier_threshold_px = 10.0f, int min_inlier_count = 20) {
+  auto t_start = std::chrono::steady_clock::now();
+  size_t initial_pts = input_points.size();
+  int passes = 0;
+
   thread_local std::mt19937 rng(std::random_device{}());
 
   std::vector<adas::core::PolynomialLaneBoundary> lanes;
   while (input_points.size() >= static_cast<size_t>(min_inlier_count)) {
+    passes++;
     std::uniform_int_distribution<size_t> dist(0, input_points.size() - 1);
 
     std::vector<cv::Point2f> best_inliers;
@@ -101,6 +108,14 @@ fitLaneRANSAC(std::vector<cv::Point2f> input_points, int max_iters = 150,
 
     input_points = std::move(best_outliers);
   }
+
+  auto t_end = std::chrono::steady_clock::now();
+  double ms_ransac =
+      std::chrono::duration<double, std::milli>(t_end - t_start).count();
+  std::printf(
+      "  [RANSAC detail] pts=%zu  passes=%d  found_lanes=%zu  time=%.1fms\n",
+      initial_pts, passes, lanes.size(), ms_ransac);
+  std::fflush(stdout);
 
   return lanes;
 }
@@ -217,6 +232,8 @@ detect_lanes(cv::Mat &bev, const adas::config::PerceptionConfig &config) {
   if (bev.empty())
     return {};
 
+  auto t0 = std::chrono::steady_clock::now();
+
   // Convert to grayscale & threshold using config.white_pixel_threshold
   cv::Mat gray, binary;
   if (bev.channels() == 3) {
@@ -227,12 +244,16 @@ detect_lanes(cv::Mat &bev, const adas::config::PerceptionConfig &config) {
   cv::threshold(gray, binary, config.white_pixel_threshold, 255,
                 cv::THRESH_BINARY);
 
+  auto t_thresh = std::chrono::steady_clock::now();
+
   // Extract all candidate non-zero edge pixels from BEV
   std::vector<cv::Point> non_zero_locs;
   cv::findNonZero(binary, non_zero_locs);
 
   std::vector<cv::Point2f> input_points(non_zero_locs.begin(),
                                         non_zero_locs.end());
+
+  auto t_nonzero = std::chrono::steady_clock::now();
 
   std::vector<adas::core::PolynomialLaneBoundary> detected_boundaries;
 
@@ -244,6 +265,22 @@ detect_lanes(cv::Mat &bev, const adas::config::PerceptionConfig &config) {
     detected_boundaries.insert(detected_boundaries.end(), lanes.begin(),
                                lanes.end());
   }
+
+  auto t_end = std::chrono::steady_clock::now();
+
+  double ms_thresh =
+      std::chrono::duration<double, std::milli>(t_thresh - t0).count();
+  double ms_nonzero =
+      std::chrono::duration<double, std::milli>(t_nonzero - t_thresh).count();
+  double ms_ransac =
+      std::chrono::duration<double, std::milli>(t_end - t_nonzero).count();
+  double ms_total =
+      std::chrono::duration<double, std::milli>(t_end - t0).count();
+
+  std::printf(
+      "[detect_lanes] thresh=%.1fms  findNonZero(%zu pts)=%.1fms  ransac=%.1fms | total=%.1fms\n",
+      ms_thresh, non_zero_locs.size(), ms_nonzero, ms_ransac, ms_total);
+  std::fflush(stdout);
 
   return detected_boundaries;
 }
