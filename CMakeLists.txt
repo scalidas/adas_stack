@@ -19,7 +19,6 @@ option(ADAS_WITH_TENSORRT "Build the TensorRT inference backend" OFF)
 # Find Required Packages
 find_package(Eigen3 REQUIRED)
 find_package(OpenCV REQUIRED)
-find_package(nlohmann_json CONFIG REQUIRED)
 find_package(asio CONFIG REQUIRED)
 
 # Project Library Target
@@ -45,7 +44,6 @@ target_include_directories(adas_stack_lib PUBLIC
 target_link_libraries(adas_stack_lib PUBLIC
     Eigen3::Eigen
     ${OpenCV_LIBS}
-    nlohmann_json::nlohmann_json
     asio::asio
 )
 
