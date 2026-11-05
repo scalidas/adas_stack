@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (c) 2014, Peter Thorson. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -109,7 +109,7 @@ public:
 
 
     /// Destructor
-    ~endpoint<connection,config>() {}
+    ~endpoint() {}
 
     #ifdef _WEBSOCKETPP_DEFAULT_DELETE_FUNCTIONS_
         // no copy constructor because endpoints are not copyable
