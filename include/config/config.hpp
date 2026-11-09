@@ -49,6 +49,11 @@ struct PerceptionConfig {
   double max_steering_angle{0.5235987755982988};
   double softening_constant{0.1};
   double wheelbase{0.0};
+
+  //MCU Link fields
+  bool mcu_link_enabled{false};
+  std::string mcu_link_device{"/dev/spidev0.0"};
+
 };
 
 inline void to_json(nlohmann::json &j, const PerceptionConfig &c) {
@@ -80,7 +85,9 @@ inline void to_json(nlohmann::json &j, const PerceptionConfig &c) {
                      {"stanley_constant", c.stanley_k},
                      {"max_steering_angle", c.max_steering_angle},
                      {"softening_constant", c.softening_constant},
-                     {"wheelbase", c.wheelbase}};
+                     {"wheelbase", c.wheelbase},
+                     {"mcu_link_enabled", c.mcu_link_enabled},
+                     {"mcu_link_device", c.mcu_link_device}};
   if (!c.class_real_heights.empty()) {
     nlohmann::json crh = nlohmann::json::object();
     for (const auto &[k, v] : c.class_real_heights) {
