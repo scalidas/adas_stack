@@ -3,8 +3,8 @@
     "extrinsics_path": "assets/calibration/extrinsic/emeet/emeet_calibration_2.xml",
     "min_inlier_count": 100,
     "ransac_inlier_threshold": 50.0,
-    "ransac_iterations": 150,
-    "white_pixel_threshold": 150,
+    "ransac_iterations": 50,
+    "white_pixel_threshold": 255,
     "model_path": "models/yolov8n.onnx",
     "engine_type": "tensorrt",
     "webcam_id": 0,
@@ -22,5 +22,6 @@
     "webserver_logging": false,
     "num_poses": 10,
     "path_step_size": 0.1,
-    "cruise_velocity": 1.0
+    "cruise_velocity": 1.0,
+    "mcu_link_enabled": true
 }

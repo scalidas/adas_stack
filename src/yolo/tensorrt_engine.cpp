@@ -304,8 +304,6 @@ std::vector<adas::core::DetectedObject> TensorRTEngine::infer(
 
     try {
         // ---- 1. Pre-process: resize -> float [0,1] -> CHW layout -----------
-        auto t0 = Clock::now();
-
         cv::Mat resized;
         cv::resize(frame, resized, cv::Size(input_width_, input_height_));
 
@@ -329,14 +327,10 @@ std::vector<adas::core::DetectedObject> TensorRTEngine::infer(
                         channel_size * sizeof(float));
         }
 
-        auto t1 = Clock::now();
-
         // ---- 2. Host -> Device copy ----------------------------------------
         CUDA_CHECK(cudaMemcpy(device_buffers_[static_cast<size_t>(input_binding_idx_)],
                               input_blob.data(), input_bytes,
                               cudaMemcpyHostToDevice));
-
-        auto t2 = Clock::now();
 
         // ---- 3. GPU inference ----------------------------------------------
         if (!context_->executeV2(device_buffers_.data())) {
@@ -346,7 +340,6 @@ std::vector<adas::core::DetectedObject> TensorRTEngine::infer(
         // Synchronise so the timer reflects actual GPU work, not just kernel launch
         cudaDeviceSynchronize();
 
-        auto t3 = Clock::now();
 
         // ---- 4. Device -> Host copy ----------------------------------------
         const size_t output_bytes =
@@ -364,26 +357,7 @@ std::vector<adas::core::DetectedObject> TensorRTEngine::infer(
                                  output_num_channels_, output_num_anchors_,
                                  frame.cols, frame.rows);
 
-        auto t5 = Clock::now();
 
-        // ---- Timing log (every kLogInterval frames) ------------------------
-        ++frame_idx;
-        if (frame_idx % kLogInterval == 0) {
-            const double ms_pre   = elapsed_ms(t0, t1);
-            const double ms_h2d   = elapsed_ms(t1, t2);
-            const double ms_infer = elapsed_ms(t2, t3);
-            const double ms_d2h   = elapsed_ms(t3, t4);
-            const double ms_post  = elapsed_ms(t4, t5);
-            const double ms_total = elapsed_ms(t0, t5);
-
-            std::printf(
-                "[TRT timing #%u]  pre=%.1fms  H2D=%.1fms  infer=%.1fms"
-                "  D2H=%.1fms  post=%.1fms  | total=%.1fms (%.1f fps)\n",
-                frame_idx,
-                ms_pre, ms_h2d, ms_infer, ms_d2h, ms_post,
-                ms_total, 1000.0 / ms_total);
-            std::fflush(stdout);
-        }
 
     } catch (const std::exception& e) {
         std::cerr << "[TensorRTEngine] Exception during infer: " << e.what()
