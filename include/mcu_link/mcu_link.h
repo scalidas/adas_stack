@@ -16,9 +16,10 @@ namespace adas::mcu_link {
             int fd{-1}; //File descriptor ID
 
         public:
-            McuLink(adas::config::PerceptionConfig cfg);
+            McuLink() = default;
+            explicit McuLink(const adas::config::PerceptionConfig& cfg);
 
-            bool send(adas::core::VehicleControlCommand cmd);
+            bool send(const adas::core::VehicleControlCommand& cmd);
     };
 }
 

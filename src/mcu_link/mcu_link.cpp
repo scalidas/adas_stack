@@ -6,18 +6,26 @@
 #include "mcu_link/mcu_link.h"
 #include "config/config.hpp"
 
+#include <cstdio>
+#include <cmath>
+#include <algorithm>
+
+#ifdef __linux__
 #include <fcntl.h>
 #include <linux/spi/spidev.h>
 #include <sys/ioctl.h>
 #include <unistd.h>
+#endif
 
 // Send one 10-byte binary transaction with one CS assertion.
 static bool send_command(int fd, SpiCommand *cmd) {
     if (!spi_command_test_ranges_ok(cmd)) {
-        std::fprintf(stderr, "Command out of range\n");
+        std::fprintf(stderr, "[MCU Link] Command out of range: effort=%d, steer=%d, brake=%d\n",
+                     cmd->target_motor_effort, cmd->target_steering_pulse_us, cmd->emergency_brake);
         return false;
     }
 
+#ifdef __linux__
     uint8_t tx[SPI_CMD_BYTES] = {};
     uint8_t unused_rx[SPI_CMD_BYTES] = {};
     spi_command_encode(cmd, tx);
@@ -40,16 +48,22 @@ static bool send_command(int fd, SpiCommand *cmd) {
         return false;
     }
     return true;
+#else
+    (void)fd;
+    return false;
+#endif
 }
 
-adas::mcu_link::McuLink::McuLink(adas::config::PerceptionConfig cfg) {
+adas::mcu_link::McuLink::McuLink(const adas::config::PerceptionConfig& cfg) {
     enabled = cfg.mcu_link_enabled;
-
     spi_device = cfg.mcu_link_device;
-    fd = static_cast<int>(open(spi_device, O_RDWR));
+
+#ifdef __linux__
+    fd = static_cast<int>(open(spi_device.c_str(), O_RDWR));
     if (fd < 0) {
         std::perror("[MCU Link] Cannot open SPI");
         enabled = false;
+        return;
     }
 
     // Match RP2350 slave: SPI Mode 1, 8-bit words, MSB first.
@@ -64,9 +78,13 @@ adas::mcu_link::McuLink::McuLink(adas::config::PerceptionConfig cfg) {
         ioctl(fd, SPI_IOC_WR_MAX_SPEED_HZ, &speed_hz) < 0) {
         std::perror("[MCU Link] Cannot configure SPI");
     }
+#else
+    std::fprintf(stderr, "[MCU Link] Warning: SPI is only supported on Linux platform.\n");
+    enabled = false;
+#endif
 }
 
-bool adas::mcu_link::McuLink::send(adas::core::VehicleControlCommand cmd) {
+bool adas::mcu_link::McuLink::send(const adas::core::VehicleControlCommand& cmd) {
     if (!enabled) {
         return false;
     }
@@ -74,10 +92,25 @@ bool adas::mcu_link::McuLink::send(adas::core::VehicleControlCommand cmd) {
     static int sequence = 0;
 
     SpiCommand spi_command;
-    spi_command.sequence = sequence;
-    spi_command.target_motor_effort = cmd.target_velocity;
-    spi_command.target_steering_pulse_us = cmd.target_steering_angle;
-    spi_command.emergency_brake = cmd.emergency_brake;
+    spi_command.sequence = static_cast<uint16_t>(sequence++);
+
+    // Motor effort in [0, 100]
+    int16_t effort = static_cast<int16_t>(std::clamp(std::round(cmd.target_velocity * 20.0), 0.0, 100.0));
+    spi_command.target_motor_effort = effort;
+
+    // Convert steering angle (radians) to pulse microseconds [1000, 2000], center 1500
+    // If input is already in [1000, 2000], use directly
+    int16_t pulse = 1500;
+    if (cmd.target_steering_angle >= 500.0) {
+        pulse = static_cast<int16_t>(std::clamp(cmd.target_steering_angle, 1000.0, 2000.0));
+    } else {
+        // Map [-0.5236, +0.5236] rad -> [1000, 2000] us
+        constexpr double MAX_STEER_RAD = 0.5235987755982988;
+        double normalized = std::clamp(cmd.target_steering_angle / MAX_STEER_RAD, -1.0, 1.0);
+        pulse = static_cast<int16_t>(std::clamp(std::round(1500.0 + normalized * 500.0), 1000.0, 2000.0));
+    }
+    spi_command.target_steering_pulse_us = pulse;
+    spi_command.emergency_brake = cmd.emergency_brake ? 1u : 0u;
 
     return send_command(fd, &spi_command);
 }
