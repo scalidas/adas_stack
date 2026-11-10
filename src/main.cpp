@@ -5,6 +5,7 @@
 #include "calibration/extrinsic_calibration.hpp"
 #include "calibration/intrinsic_calibration.hpp"
 #include "config/config.hpp"
+#include "core/orchestrator.hpp"
 #include "perception/lane_detection.hpp"
 #include "perception/perceptionengine.hpp"
 #include "perception/road_object.hpp"
@@ -23,6 +24,7 @@ enum mode {
     ROAD_OBJECT_DEMO,
     YOLO_LIVE_DEMO,
     PERCEPTION_DEMO,
+    ADAS_DEMO,
 };
 
 int main(int argc, char** argv) {
@@ -65,6 +67,8 @@ int main(int argc, char** argv) {
         mode = YOLO_LIVE_DEMO;
     } else if (arg_mode == "perception_demo" || arg_mode == "live_perception_demo") {
         mode = PERCEPTION_DEMO;
+    } else if (arg_mode == "adas_demo") {
+        mode = ADAS_DEMO;
     } else {
         std::cout << "Invalid mode selection" << std::endl;
         return -1;
@@ -188,6 +192,20 @@ int main(int argc, char** argv) {
 
             adas::perception::PerceptionEngine perception_engine(config);
             return perception_engine.runLiveDemo() ? 0 : -1;
+        }
+        case ADAS_DEMO: {
+            if (argc != 3) {
+                std::cout << "Usage: adas_stack perception_demo <config_file>"
+                          << std::endl;
+                return -1;
+            }
+
+            std::string config_file = argv[2];
+            adas::config::PerceptionConfig config =
+                adas::config::load_config(config_file);
+
+            adas::core::Orchestrator orchestrator(config);
+            return orchestrator.run();
         }
     }
 

@@ -176,9 +176,9 @@ int main() {
       std::cout << "[Test] WorldModel serialization passed: " << wm_json.dump() << std::endl;
 
       // Verify WebSocketStreamer lifecycle and broadcast
-      adas::streaming::StreamerConfig streamer_cfg;
-      streamer_cfg.port = 9005;
-      streamer_cfg.host = "127.0.0.1";
+      adas::config::PerceptionConfig streamer_cfg;
+      streamer_cfg.webserver_port = 9005;
+      streamer_cfg.webserver_host = "127.0.0.1";
       adas::streaming::WebSocketStreamer streamer(streamer_cfg);
       assert(streamer.start());
       assert(streamer.is_running());

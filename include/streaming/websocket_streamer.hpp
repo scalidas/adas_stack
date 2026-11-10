@@ -1,9 +1,14 @@
 #pragma once
 
+#include "config/config.hpp"
 #include "core/core_types.hpp"
 #include <nlohmann/json.hpp>
-// ASIO_STANDALONE and _WEBSOCKETPP_CPP11_STL_ are set by the CMake build
-// system via the adas_asio INTERFACE target -- no manual #define needed here.
+#ifndef ASIO_STANDALONE
+#define ASIO_STANDALONE
+#endif
+#ifndef _WEBSOCKETPP_CPP11_STL_
+#define _WEBSOCKETPP_CPP11_STL_
+#endif
 #include <websocketpp/config/asio_no_tls.hpp>
 #include <websocketpp/server.hpp>
 
@@ -36,14 +41,6 @@ void from_json(const nlohmann::json &j, VehicleControlCommand &cmd);
 
 namespace adas::streaming {
 
-struct StreamerConfig {
-  uint16_t port{9002};
-  std::string host{"0.0.0.0"};
-  bool enable_logging{false};
-  size_t max_queue_size{100};
-  std::string endpoint_path{"/world_model"};
-};
-
 class WebSocketStreamer {
 public:
   using Server = websocketpp::server<websocketpp::config::asio_no_tls>;
@@ -52,7 +49,9 @@ public:
   using ConnectionSet = std::set<ConnectionHdl, std::owner_less<ConnectionHdl>>;
 
   // Constructor & Destructor
-  explicit WebSocketStreamer(const StreamerConfig &config = StreamerConfig{});
+  explicit WebSocketStreamer(
+      const adas::config::PerceptionConfig &config =
+          adas::config::PerceptionConfig{});
   ~WebSocketStreamer();
 
   // Prevent copying
@@ -80,12 +79,21 @@ public:
   size_t get_active_client_count() const;
   uint16_t get_port() const;
   std::string get_host() const;
-  const StreamerConfig &get_config() const;
+  bool is_logging_enabled() const;
+  size_t get_max_queue_size() const;
+  const std::string &get_endpoint_path() const;
+  const adas::config::PerceptionConfig &get_config() const;
 
 private:
   void init_server();
 
-  StreamerConfig config_;
+  adas::config::PerceptionConfig config_;
+  uint16_t port_{9002};
+  std::string host_{"0.0.0.0"};
+  bool enable_logging_{false};
+  size_t max_queue_size_{100};
+  std::string endpoint_path_{"/world_model"};
+
   Server server_;
 
   ConnectionSet connections_;

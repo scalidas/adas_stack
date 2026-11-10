@@ -30,7 +30,7 @@ cmake --build build
 #### Perception Demo
 
 ```
-.\build\Release\adas_stack.exe perception_demo --config config/live_perception_demo.json
+.\build\Release\adas_stack.exe perception_demo config/live_perception_demo.json
 ```
 
 #### Detect Lane

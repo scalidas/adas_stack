@@ -1,3 +1,5 @@
+#pragma once
+
 #include "config/config.hpp"
 #include "core/core_types.hpp"
 

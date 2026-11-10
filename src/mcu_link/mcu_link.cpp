@@ -66,7 +66,11 @@ adas::mcu_link::McuLink::McuLink(adas::config::PerceptionConfig cfg) {
     }
 }
 
-adas::mcu_link::McuLink::send(adas::core::VehicleControlCommand cmd) {
+bool adas::mcu_link::McuLink::send(adas::core::VehicleControlCommand cmd) {
+    if (!enabled) {
+        return false;
+    }
+
     static int sequence = 0;
 
     SpiCommand spi_command;
@@ -75,7 +79,7 @@ adas::mcu_link::McuLink::send(adas::core::VehicleControlCommand cmd) {
     spi_command.target_steering_pulse_us = cmd.target_steering_angle;
     spi_command.emergency_brake = cmd.emergency_brake;
 
-    send_command(fd, &spi_command);
+    return send_command(fd, &spi_command);
 }
 
 #endif

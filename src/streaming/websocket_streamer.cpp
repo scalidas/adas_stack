@@ -130,8 +130,13 @@ void to_json(nlohmann::json& j, const WorldModel& wm) {
 
 namespace adas::streaming {
 
-WebSocketStreamer::WebSocketStreamer(const StreamerConfig& config)
-    : config_(config) {
+WebSocketStreamer::WebSocketStreamer(const adas::config::PerceptionConfig& config)
+    : config_(config),
+      port_(config.webserver_port),
+      host_(config.webserver_host),
+      enable_logging_(config.webserver_logging),
+      max_queue_size_(config.webserver_max_queue_size),
+      endpoint_path_(config.webserver_endpoint_path) {
     init_server();
 }
 
@@ -140,7 +145,7 @@ WebSocketStreamer::~WebSocketStreamer() {
 }
 
 void WebSocketStreamer::init_server() {
-    if (!config_.enable_logging) {
+    if (!enable_logging_) {
         server_.clear_access_channels(websocketpp::log::alevel::all);
         server_.clear_error_channels(websocketpp::log::elevel::all);
     } else {
@@ -167,15 +172,15 @@ bool WebSocketStreamer::start() {
 
     server_.reset();
 
-    if (config_.host.empty() || config_.host == "0.0.0.0") {
-        server_.listen(config_.port, ec);
+    if (host_.empty() || host_ == "0.0.0.0") {
+        server_.listen(port_, ec);
     } else {
-        server_.listen(config_.host, std::to_string(config_.port), ec);
+        server_.listen(host_, std::to_string(port_), ec);
     }
 
     if (ec) {
-        std::cerr << "[WebSocketStreamer] Listen failed on " << config_.host
-                  << ":" << config_.port << " - " << ec.message() << std::endl;
+        std::cerr << "[WebSocketStreamer] Listen failed on " << host_
+                  << ":" << port_ << " - " << ec.message() << std::endl;
         return false;
     }
 
@@ -197,9 +202,9 @@ bool WebSocketStreamer::start() {
         is_running_.store(false);
     });
 
-    if (config_.enable_logging) {
-        std::cout << "[WebSocketStreamer] Listening on " << config_.host << ":"
-                  << config_.port << std::endl;
+    if (enable_logging_) {
+        std::cout << "[WebSocketStreamer] Listening on " << host_ << ":"
+                  << port_ << std::endl;
     }
 
     return true;
@@ -230,7 +235,7 @@ void WebSocketStreamer::stop() {
         server_thread_.join();
     }
 
-    if (config_.enable_logging) {
+    if (enable_logging_) {
         std::cout << "[WebSocketStreamer] Stopped." << std::endl;
     }
 }
@@ -262,7 +267,7 @@ void WebSocketStreamer::broadcast_string(const std::string& message) {
     for (const auto& hdl : connections_) {
         websocketpp::lib::error_code ec;
         server_.send(hdl, message, websocketpp::frame::opcode::text, ec);
-        if (ec && config_.enable_logging) {
+        if (ec && enable_logging_) {
             std::cerr << "[WebSocketStreamer] Send failed: " << ec.message()
                       << std::endl;
         }
@@ -272,7 +277,7 @@ void WebSocketStreamer::broadcast_string(const std::string& message) {
 void WebSocketStreamer::on_open(ConnectionHdl hdl) {
     std::lock_guard<std::mutex> lock(connections_mutex_);
     connections_.insert(hdl);
-    if (config_.enable_logging) {
+    if (enable_logging_) {
         std::cout << "[WebSocketStreamer] Client connected. Active clients: "
                   << connections_.size() << std::endl;
     }
@@ -281,14 +286,14 @@ void WebSocketStreamer::on_open(ConnectionHdl hdl) {
 void WebSocketStreamer::on_close(ConnectionHdl hdl) {
     std::lock_guard<std::mutex> lock(connections_mutex_);
     connections_.erase(hdl);
-    if (config_.enable_logging) {
+    if (enable_logging_) {
         std::cout << "[WebSocketStreamer] Client disconnected. Active clients: "
                   << connections_.size() << std::endl;
     }
 }
 
 void WebSocketStreamer::on_message(ConnectionHdl /*hdl*/, MessagePtr msg) {
-    if (config_.enable_logging && msg) {
+    if (enable_logging_ && msg) {
         std::cout << "[WebSocketStreamer] Received message: "
                   << msg->get_payload() << std::endl;
     }
@@ -300,14 +305,26 @@ size_t WebSocketStreamer::get_active_client_count() const {
 }
 
 uint16_t WebSocketStreamer::get_port() const {
-    return config_.port;
+    return port_;
 }
 
 std::string WebSocketStreamer::get_host() const {
-    return config_.host;
+    return host_;
 }
 
-const StreamerConfig& WebSocketStreamer::get_config() const {
+bool WebSocketStreamer::is_logging_enabled() const {
+    return enable_logging_;
+}
+
+size_t WebSocketStreamer::get_max_queue_size() const {
+    return max_queue_size_;
+}
+
+const std::string& WebSocketStreamer::get_endpoint_path() const {
+    return endpoint_path_;
+}
+
+const adas::config::PerceptionConfig& WebSocketStreamer::get_config() const {
     return config_;
 }
 

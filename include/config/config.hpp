@@ -38,6 +38,8 @@ struct PerceptionConfig {
   std::string streaming_host{"0.0.0.0"};
   bool webserver_logging{false};
   bool streaming_logging{false};
+  size_t webserver_max_queue_size{100};
+  std::string webserver_endpoint_path{"/world_model"};
 
   // Trajectory planning fields
   int num_poses{20};
@@ -78,6 +80,8 @@ inline void to_json(nlohmann::json &j, const PerceptionConfig &c) {
                      {"webserver_port", c.webserver_port},
                      {"webserver_host", c.webserver_host},
                      {"webserver_logging", c.webserver_logging},
+                     {"webserver_max_queue_size", c.webserver_max_queue_size},
+                     {"webserver_endpoint_path", c.webserver_endpoint_path},
                      {"num_poses", c.num_poses},
                      {"path_step_size", c.path_step_size},
                      {"cruise_velocity", c.cruise_velocity},
@@ -174,6 +178,18 @@ inline void from_json(const nlohmann::json &j, PerceptionConfig &c) {
   } else if (j.contains("streaming_logging")) {
     c.streaming_logging = j["streaming_logging"].get<bool>();
     c.webserver_logging = c.streaming_logging;
+  }
+
+  if (j.contains("webserver_max_queue_size")) {
+    c.webserver_max_queue_size = j["webserver_max_queue_size"].get<size_t>();
+  } else if (j.contains("max_queue_size")) {
+    c.webserver_max_queue_size = j["max_queue_size"].get<size_t>();
+  }
+
+  if (j.contains("webserver_endpoint_path")) {
+    c.webserver_endpoint_path = j["webserver_endpoint_path"].get<std::string>();
+  } else if (j.contains("endpoint_path")) {
+    c.webserver_endpoint_path = j["endpoint_path"].get<std::string>();
   }
 
   if (j.contains("target_class_ids")) {

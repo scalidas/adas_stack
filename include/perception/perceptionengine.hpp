@@ -1,3 +1,5 @@
+#pragma once
+
 #include <chrono>
 #include <unordered_set>
 #include <vector>
@@ -7,6 +9,7 @@
 
 #include "config/config.hpp"
 #include "core/core_types.hpp"
+#include "mcu_link/mcu_link.h"
 #include "yolo/inference_engine.hpp"
 #include "yolo/opencv_dnn_engine.hpp"
 
@@ -39,6 +42,10 @@ class PerceptionEngine {
 
     std::unique_ptr<streaming::WebSocketStreamer> streamer;
 
+    #ifdef ADAS_ENABLE_MCU_LINK
+    mcu_link::McuLink mcu_link;
+    #endif
+
     //Extract the current lane from the given frame
     std::optional<adas::core::Lane> process_lanes(const cv::Mat& frame);
 
@@ -52,6 +59,9 @@ class PerceptionEngine {
     ~PerceptionEngine();
 
     adas::core::WorldModel process_frame(const cv::Mat& frame);
+
+    const cv::Mat& get_ipm() const { return ipm; }
+    const cv::Mat& get_ipm() { return ipm; }
 
     bool runLiveDemo();
 

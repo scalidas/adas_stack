@@ -53,7 +53,7 @@ endif()
 # INTERFACE target so all dependents just link adas_asio
 add_library(adas_asio INTERFACE)
 target_include_directories(adas_asio INTERFACE "${ASIO_INCLUDE_DIR}")
-target_compile_definitions(adas_asio INTERFACE ASIO_STANDALONE)
+target_compile_definitions(adas_asio INTERFACE ASIO_STANDALONE _WEBSOCKETPP_CPP11_STL_)
 # Windows requires an explicit minimum platform version for asio socket APIs
 if(WIN32)
     target_compile_definitions(adas_asio INTERFACE _WIN32_WINNT=0x0601)
@@ -71,6 +71,7 @@ add_library(adas_stack_lib
     src/streaming/websocket_streamer.cpp
     src/planning/planner.cpp
     src/controller/stanley_controller.cpp
+    src/core/orchestrator.cpp
 )
 
 target_include_directories(adas_stack_lib PUBLIC

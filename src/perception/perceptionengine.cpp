@@ -92,6 +92,10 @@ PerceptionEngine::PerceptionEngine(const adas::config::PerceptionConfig& cfg) {
         std::cout << "[PerceptionEngine] Using OpenCV DNN inference backend.\n";
     }
 
+    #ifdef ADAS_ENABLE_MCU_LINK
+    mcu_link = mcu_link::McuLink(cfg);
+    #endif
+
     if (!config.target_class_ids.empty()) {
         inference_engine->setClasses(config.target_class_ids);
         for (int cid : config.target_class_ids) {
@@ -128,12 +132,7 @@ bool PerceptionEngine::start_webserver() {
     if (streamer && streamer->is_running()) {
         return true;
     }
-    adas::streaming::StreamerConfig streamer_cfg;
-    streamer_cfg.port = config.webserver_port;
-    streamer_cfg.host = config.webserver_host;
-    streamer_cfg.enable_logging = config.webserver_logging;
-    streamer =
-        std::make_unique<adas::streaming::WebSocketStreamer>(streamer_cfg);
+    streamer = std::make_unique<adas::streaming::WebSocketStreamer>(config);
     if (!streamer->start()) {
         std::cerr << "[PerceptionEngine] Warning: Failed to start webserver on "
                   << config.webserver_host << ":" << config.webserver_port
@@ -392,6 +391,13 @@ bool PerceptionEngine::runLiveDemo() {
         if (is_webserver_running()) {
             broadcast_world_model(world_model);
         }
+
+        #ifdef ADAS_ENABLE_MCU_LINK
+        bool result = mcu_link.send(control_cmd);
+        
+        //TODO: Handle SPI result failure if needed
+        #endif
+
         auto t_plan = Clock::now();
 
         // Prepare visualization canvas
