@@ -15,6 +15,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 #         -DCUDA_TOOLKIT_ROOT_DIR=/usr/local/cuda ..
 # ---------------------------------------------------------------------------
 option(ADAS_WITH_TENSORRT "Build the TensorRT inference backend" OFF)
+option(ADAS_ENABLE_MCU_LINK "Enable MCU SPI communication link" OFF)
 
 # Find Required Packages
 find_package(Eigen3 REQUIRED)
@@ -148,6 +149,17 @@ if(ADAS_WITH_TENSORRT)
     message(STATUS "[ADAS] TensorRT backend enabled.")
 else()
     message(STATUS "[ADAS] TensorRT backend disabled (pass -DADAS_WITH_TENSORRT=ON to enable).")
+endif()
+
+# ---------------------------------------------------------------------------
+# Optional MCU Link SPI communication (only compiled when ADAS_ENABLE_MCU_LINK=ON)
+# ---------------------------------------------------------------------------
+if(ADAS_ENABLE_MCU_LINK)
+    target_sources(adas_stack_lib PRIVATE src/mcu_link/mcu_link.cpp)
+    target_compile_definitions(adas_stack_lib PUBLIC ADAS_ENABLE_MCU_LINK)
+    message(STATUS "[ADAS] MCU Link enabled.")
+else()
+    message(STATUS "[ADAS] MCU Link disabled (pass -DADAS_ENABLE_MCU_LINK=ON to enable).")
 endif()
 
 # Compiler Warnings

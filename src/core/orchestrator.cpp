@@ -101,7 +101,7 @@ int adas::core::Orchestrator::run() {
 // Transmit to MCU via SPI
 #ifdef ADAS_ENABLE_MCU_LINK
         bool result = mcu_link.send(control_cmd);
-
+        (void)result;
 //TODO: Handle SPI result failure if needed
 #endif
 

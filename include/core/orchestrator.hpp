@@ -6,6 +6,10 @@
 #include "planning/planner.hpp"
 #include "streaming/websocket_streamer.hpp"
 
+#ifdef ADAS_ENABLE_MCU_LINK
+#include "mcu_link/mcu_link.h"
+#endif
+
 namespace adas::core {
 
 class Orchestrator {
@@ -14,6 +18,10 @@ class Orchestrator {
     perception::PerceptionEngine perception_engine;
     planning::Planner planner;
     controller::StanleyController controller;
+
+    #ifdef ADAS_ENABLE_MCU_LINK
+    mcu_link::McuLink mcu_link;
+    #endif
 
     enum State { STOPPED, CRUISE };
     State state;
@@ -55,6 +63,9 @@ class Orchestrator {
         if (enable_webserver) {
             start_webserver();
         }
+        #ifdef ADAS_ENABLE_MCU_LINK
+        mcu_link = mcu_link::McuLink(cfg);
+        #endif
     }
 
     ~Orchestrator() {
