@@ -9,6 +9,7 @@
 #include <cstdio>
 #include <cmath>
 #include <algorithm>
+#include <iostream>
 
 #ifdef __linux__
 #include <fcntl.h>
@@ -111,6 +112,8 @@ bool adas::mcu_link::McuLink::send(const adas::core::VehicleControlCommand& cmd)
     }
     spi_command.target_steering_pulse_us = pulse;
     spi_command.emergency_brake = cmd.emergency_brake ? 1u : 0u;
+
+    std::cout << "Sending MCU Command \n";
 
     return send_command(fd, &spi_command);
 }

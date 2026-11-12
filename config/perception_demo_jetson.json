@@ -1,10 +1,10 @@
 {
     "intrinsics_path": "assets/calibration/intrinsic/emeet/emeet_intrinsics.xml",
     "extrinsics_path": "assets/calibration/extrinsic/emeet/emeet_calibration_4.xml",
-    "min_inlier_count": 100,
+    "min_inlier_count": 2000,
     "ransac_inlier_threshold": 50.0,
     "ransac_iterations": 50,
-    "white_pixel_threshold": 255,
+    "white_pixel_threshold": 200,
     "model_path": "models/yolov8n.onnx",
     "engine_type": "tensorrt",
     "webcam_id": 0,
