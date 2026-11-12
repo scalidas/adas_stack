@@ -133,7 +133,7 @@ int run_extrinsic_calibration(const std::string &image_path,
   }
 
   const std::vector<cv::Point2f> dst_pts = {
-      {220.0f, 143.0f}, {420.0f, 143.0f}, {220.0f, 400.0f}, {420.0f, 400.0f}};
+    {256.4f, 178.8f}, {383.6f, 178.8f}, {256.4f, 330.0f}, {383.6f, 330.0f}};
 
   const std::string win_name = "Interactive Calibration";
   cv::namedWindow(win_name, cv::WINDOW_AUTOSIZE);
