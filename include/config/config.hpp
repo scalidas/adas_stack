@@ -192,6 +192,14 @@ inline void from_json(const nlohmann::json &j, PerceptionConfig &c) {
     c.webserver_endpoint_path = j["endpoint_path"].get<std::string>();
   }
 
+  if (j.contains("mcu_link_enabled")) {
+    c.mcu_link_enabled = j["mcu_link_enabled"].get<bool>();
+  }
+
+  if (j.contains("mcu_link_device")) {
+    c.mcu_link_device = j["mcu_link_device"].get<std::string>();
+  }
+
   if (j.contains("target_class_ids")) {
     c.target_class_ids = j["target_class_ids"].get<std::vector<int>>();
   } else if (j.contains("target_coco_ids")) {

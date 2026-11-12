@@ -65,7 +65,8 @@ int main(int argc, char** argv) {
         mode = ROAD_OBJECT_DEMO;
     } else if (arg_mode == "yolo_live_demo") {
         mode = YOLO_LIVE_DEMO;
-    } else if (arg_mode == "perception_demo" || arg_mode == "live_perception_demo") {
+    } else if (arg_mode == "perception_demo" ||
+               arg_mode == "live_perception_demo") {
         mode = PERCEPTION_DEMO;
     } else if (arg_mode == "adas_demo") {
         mode = ADAS_DEMO;
@@ -160,7 +161,8 @@ int main(int argc, char** argv) {
             if (config.engine_type == "opencv") {
                 engine = std::make_unique<adas::yolo::OpenCVDNNEngine>();
 #ifdef ADAS_WITH_TENSORRT
-            } else if (config.engine_type == "tensorrt" || config.engine_type == "trt") {
+            } else if (config.engine_type == "tensorrt" ||
+                       config.engine_type == "trt") {
                 engine = std::make_unique<adas::yolo::TensorRTEngine>();
 #endif
             } else {
@@ -195,7 +197,7 @@ int main(int argc, char** argv) {
         }
         case ADAS_DEMO: {
             if (argc != 3) {
-                std::cout << "Usage: adas_stack perception_demo <config_file>"
+                std::cout << "Usage: adas_stack adas_demo <config_file>"
                           << std::endl;
                 return -1;
             }
