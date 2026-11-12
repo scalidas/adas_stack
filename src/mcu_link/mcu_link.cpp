@@ -59,6 +59,9 @@ adas::mcu_link::McuLink::McuLink(const adas::config::PerceptionConfig& cfg) {
     enabled = cfg.mcu_link_enabled;
     spi_device = cfg.mcu_link_device;
 
+        std::cout << "Sending MCU Command enabled : " << enabled << "\n";
+
+
 #ifdef __linux__
     fd = static_cast<int>(open(spi_device.c_str(), O_RDWR));
     if (fd < 0) {
