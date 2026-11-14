@@ -59,7 +59,7 @@ adas::mcu_link::McuLink::McuLink(const adas::config::PerceptionConfig& cfg) {
     enabled = cfg.mcu_link_enabled;
     spi_device = cfg.mcu_link_device;
 
-        std::cout << "MCU Link Enabled : " << enaled << "\n";
+    std::cout << "MCU Link Enabled : " << enabled << "\n";
 
 
 #ifdef __linux__

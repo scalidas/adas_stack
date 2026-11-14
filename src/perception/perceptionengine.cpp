@@ -20,8 +20,8 @@
 
 static bool is_left(const adas::core::PolynomialLaneBoundary& a,
                     const adas::core::PolynomialLaneBoundary& b) {
-    //+y is right
-    return a.c0 < b.c0;
+    // In BEV pixel coords, evaluate at row 300; smaller x (column) is the left boundary
+    return a.evaluate(300.0) < b.evaluate(300.0);
 }
 
 static adas::core::PolynomialLaneBoundary computeCenterline(
@@ -177,11 +177,11 @@ std::optional<adas::core::Lane> PerceptionEngine::process_lanes(
         return std::nullopt;
     }
 
-    //Construct lane model
+    //Construct lane model in BEV pixel coordinates
     adas::core::Lane lane;
     lane.lane_id = 1;
 
-    //Left boundary is the one smaller at x = 0
+    //Left boundary is the one with smaller x in BEV
     lane.left_boundary = is_left(lane_boundaries[0], lane_boundaries[1])
                              ? lane_boundaries[0]
                              : lane_boundaries[1];
@@ -189,20 +189,16 @@ std::optional<adas::core::Lane> PerceptionEngine::process_lanes(
                               ? lane_boundaries[1]
                               : lane_boundaries[0];
 
-    constexpr double METERS_PER_BEV_PIXEL = 0.00084;
-    lane.left_boundary.c0 *= METERS_PER_BEV_PIXEL;
-    lane.right_boundary.c0 *= METERS_PER_BEV_PIXEL;
-
-    double average_lane_pos =
-        (lane.left_boundary.c0 + lane.right_boundary.c0) / 2;
-    lane.left_boundary.c0 -= average_lane_pos;
-    lane.right_boundary.c0 -= average_lane_pos;
-
     lane.centerline =
         computeCenterline(lane.left_boundary, lane.right_boundary);
 
-    lane.lane_width =
-        (lane.right_boundary.evaluate(0) - lane.left_boundary.evaluate(0));
+    constexpr double METERS_PER_BEV_PIXEL = 0.00084;
+    double width_px =
+        lane.right_boundary.evaluate(300.0) - lane.left_boundary.evaluate(300.0);
+    if (width_px <= 0.0) {
+        width_px = lane.right_boundary.c0 - lane.left_boundary.c0;
+    }
+    lane.lane_width = std::abs(width_px) * METERS_PER_BEV_PIXEL;
 
     return lane;
 }
