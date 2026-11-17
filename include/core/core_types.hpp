@@ -58,13 +58,6 @@ struct TrackedObject {
     float confidence{0.0f};
 };
 
-struct TrafficSign {
-    enum class Type { STOP_SIGN, UNKNOWN };
-    Type type{Type::UNKNOWN};
-    Vector3D position;  // position of the center - in the frame of the vehicle
-    float confidence{0.0f};
-};
-
 // Represent lanes as quadratics in local frame
 struct PolynomialLaneBoundary {
     double c0{0.0};
@@ -129,7 +122,6 @@ struct WorldModel {
     std::optional<Lane> left_neighbor_lane;
     std::optional<Lane> right_neighbor_lane;
     std::vector<TrackedObject> obstacles;
-    std::vector<TrafficSign> traffic_signs;
 
     Trajectory trajectory;
     std::optional<VehicleControlCommand> control_command;

@@ -23,16 +23,6 @@ void to_json(nlohmann::json& j, const TrackedObject& obj) {
                        {"confidence", obj.confidence}};
 }
 
-void to_json(nlohmann::json& j, const TrafficSign& sign) {
-    std::string type_str = "UNKNOWN";
-    if (sign.type == TrafficSign::Type::STOP_SIGN) {
-        type_str = "STOP_SIGN";
-    }
-    j = nlohmann::json{{"type", type_str},
-                       {"position", sign.position},
-                       {"confidence", sign.confidence}};
-}
-
 void to_json(nlohmann::json& j, const PolynomialLaneBoundary& poly) {
     j = nlohmann::json{{"c0", poly.c0}, {"c1", poly.c1}, {"c2", poly.c2}};
 }
@@ -118,7 +108,6 @@ void to_json(nlohmann::json& j, const WorldModel& wm) {
                             ? nlohmann::json(wm.right_neighbor_lane.value())
                             : nlohmann::json(nullptr)},
                        {"obstacles", wm.obstacles},
-                       {"traffic_signs", wm.traffic_signs},
                        {"trajectory", wm.trajectory},
                        {"control_command",
                         wm.control_command.has_value()

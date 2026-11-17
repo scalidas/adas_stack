@@ -46,6 +46,12 @@ struct PerceptionConfig {
   double path_step_size{0.5};
   double cruise_velocity{1.0};
 
+  // Stop sign handling fields
+  bool enable_stop_signs{false};
+  double stop_sign_distance{2.0};
+  double stop_sign_buffer{0.3};
+  double stop_sign_hold_time_s{1.0};
+
   // Controller fields
   double stanley_k{1.0};
   double max_steering_angle{0.5235987755982988};
@@ -91,7 +97,11 @@ inline void to_json(nlohmann::json &j, const PerceptionConfig &c) {
                      {"softening_constant", c.softening_constant},
                      {"wheelbase", c.wheelbase},
                      {"mcu_link_enabled", c.mcu_link_enabled},
-                     {"mcu_link_device", c.mcu_link_device}};
+                     {"mcu_link_device", c.mcu_link_device},
+                     {"enable_stop_signs", c.enable_stop_signs},
+                     {"stop_sign_distance", c.stop_sign_distance},
+                     {"stop_sign_buffer", c.stop_sign_buffer},
+                     {"stop_sign_hold_time_s", c.stop_sign_hold_time_s}};
   if (!c.class_real_heights.empty()) {
     nlohmann::json crh = nlohmann::json::object();
     for (const auto &[k, v] : c.class_real_heights) {
@@ -198,6 +208,19 @@ inline void from_json(const nlohmann::json &j, PerceptionConfig &c) {
 
   if (j.contains("mcu_link_device")) {
     c.mcu_link_device = j["mcu_link_device"].get<std::string>();
+  }
+
+  if (j.contains("enable_stop_signs")) {
+    c.enable_stop_signs = j["enable_stop_signs"].get<bool>();
+  }
+  if (j.contains("stop_sign_distance")) {
+    c.stop_sign_distance = j["stop_sign_distance"].get<double>();
+  }
+  if (j.contains("stop_sign_buffer")) {
+    c.stop_sign_buffer = j["stop_sign_buffer"].get<double>();
+  }
+  if (j.contains("stop_sign_hold_time_s")) {
+    c.stop_sign_hold_time_s = j["stop_sign_hold_time_s"].get<double>();
   }
 
   if (j.contains("target_class_ids")) {

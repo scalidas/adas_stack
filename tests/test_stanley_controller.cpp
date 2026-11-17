@@ -5,6 +5,7 @@
 #include <cmath>
 #include <fstream>
 #include <iostream>
+#include <thread>
 
 int main() {
     std::cout << "[Test] Starting Stanley Controller test suite..." << std::endl;
@@ -243,6 +244,74 @@ int main() {
         assert(parsed.emergency_brake == false);
 
         std::cout << "[Test] VehicleControlCommand serialization passed." << std::endl;
+    }
+
+    // 13. Test Stop Sign Planning and Velocity Scaling
+    {
+        adas::config::PerceptionConfig config;
+        config.num_poses = 10;
+        config.path_step_size = 0.2;
+        config.cruise_velocity = 2.0;
+        config.enable_stop_signs = true;
+        config.stop_sign_distance = 2.0;
+        config.stop_sign_buffer = 0.4;
+        config.stop_sign_hold_time_s = 1.0;
+
+        adas::planning::Planner planner(config);
+        adas::core::WorldModel wm;
+
+        // A. Without stop signs in obstacles -> cruise velocity
+        adas::core::Trajectory traj_no_sign = planner.plan_trajectory(wm);
+        assert(traj_no_sign.points[0].target_velocity == 2.0);
+        assert(planner.get_stop_sign_state() == adas::planning::StopSignState::CRUISING);
+
+        // B. With stop sign outside stop_sign_distance (e.g. 3.0m) -> cruise velocity
+        adas::core::TrackedObject sign_far;
+        sign_far.label = "stop sign";
+        sign_far.position.x = 3.0;
+        wm.obstacles.push_back(sign_far);
+
+        adas::core::Trajectory traj_far = planner.plan_trajectory(wm);
+        assert(traj_far.points[0].target_velocity == 2.0);
+        assert(planner.get_stop_sign_state() == adas::planning::StopSignState::CRUISING);
+
+        // C. With stop sign within deceleration zone (e.g. 1.2m) -> decelerates
+        wm.obstacles[0].position.x = 1.2;
+        adas::core::Trajectory traj_decel = planner.plan_trajectory(wm);
+        // Distance to stop line = 1.2 - 0.4 = 0.8m. Total decel distance = 2.0 - 0.4 = 1.6m.
+        // Ratio at pose 0 = 0.8 / 1.6 = 0.5 -> vel = 1.0m/s.
+        assert(std::abs(traj_decel.points[0].target_velocity - 1.0) < 1e-4);
+        // Waypoint at x=0.8m is at stop line -> velocity = 0.0
+        assert(traj_decel.points[4].target_velocity == 0.0);
+        assert(planner.get_stop_sign_state() == adas::planning::StopSignState::CRUISING);
+
+        // D. Reached stop buffer (e.g. 0.42m -> dist to stop = 0.02m <= 0.05m) -> STOPPED
+        wm.obstacles[0].position.x = 0.42;
+        adas::core::Trajectory traj_stopped = planner.plan_trajectory(wm);
+        assert(planner.get_stop_sign_state() == adas::planning::StopSignState::STOPPED);
+        for (const auto& pt : traj_stopped.points) {
+            assert(pt.target_velocity == 0.0);
+        }
+
+        // Still stopped before 1.0 second expires
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        traj_stopped = planner.plan_trajectory(wm);
+        assert(planner.get_stop_sign_state() == adas::planning::StopSignState::STOPPED);
+        assert(traj_stopped.points[0].target_velocity == 0.0);
+
+        // E. After 1.0 second has elapsed -> PROCEEDING
+        std::this_thread::sleep_for(std::chrono::milliseconds(850));
+        adas::core::Trajectory traj_proceeding = planner.plan_trajectory(wm);
+        assert(planner.get_stop_sign_state() == adas::planning::StopSignState::PROCEEDING);
+        assert(traj_proceeding.points[0].target_velocity == 2.0);
+
+        // F. Stop sign leaves the frame -> back to CRUISING
+        wm.obstacles.clear();
+        adas::core::Trajectory traj_cleared = planner.plan_trajectory(wm);
+        assert(planner.get_stop_sign_state() == adas::planning::StopSignState::CRUISING);
+        assert(traj_cleared.points[0].target_velocity == 2.0);
+
+        std::cout << "[Test] Stop sign planning, deceleration, 1s pause, and proceed passed." << std::endl;
     }
 
     std::cout << "[Test] ALL STANLEY CONTROLLER TESTS PASSED SUCCESSFULLY!" << std::endl;

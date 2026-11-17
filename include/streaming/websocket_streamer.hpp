@@ -24,7 +24,6 @@ namespace adas::core {
 
 void to_json(nlohmann::json &j, const Vector3D &v);
 void to_json(nlohmann::json &j, const TrackedObject &obj);
-void to_json(nlohmann::json &j, const TrafficSign &sign);
 void to_json(nlohmann::json &j, const PolynomialLaneBoundary &poly);
 void to_json(nlohmann::json &j, const Lane &lane);
 void to_json(nlohmann::json &j, const EgoState &ego);
