@@ -16,7 +16,8 @@ cmake -B build \
   -DADAS_WITH_TENSORRT=ON \
   -DTENSORRT_ROOT=/opt/TensorRT-10.x \
   -DCUDA_TOOLKIT_ROOT_DIR=/usr/local/cuda \
-  ..
+  .
+  
 cmake --build build -j$(nproc)
 ```
 

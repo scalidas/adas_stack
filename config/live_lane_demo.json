@@ -5,5 +5,5 @@
     "min_inlier_count": 3000,
     "ransac_inlier_threshold": 50.0,
     "ransac_iterations": 50,
-    "white_pixel_threshold": 200
+    "white_pixel_threshold": 205
 }
