@@ -64,6 +64,16 @@ int adas::core::Orchestrator::run() {
               << std::endl;
 
     while (true) {
+        if (state == STOPPED) {
+            //Wait for user to restart
+            int key = cv::waitKey(0);
+            if (key == 'r') {
+                std::cout << "[Orchestrator] Entering CRUISE state";
+                state = CRUISE;
+                continue;
+            }
+        }
+
         cap >> raw_frame;
         if (raw_frame.empty()) {
             std::cerr << "[Orchestrator] Warning: Captured empty frame."
@@ -276,6 +286,11 @@ int adas::core::Orchestrator::run() {
         cv::imshow(window_name, display_frame);
 
         int key = cv::waitKey(1);
+
+        if (key == 'r') {
+            std::cout << "[Orchestrator] Stopping. Entering STOP state";
+            continue;
+        }
 
         if (key == 27 || key == 'q' || key == 'Q') {
             std::cout << "[adas::core::Orchestrator] Live demo stopped by user."

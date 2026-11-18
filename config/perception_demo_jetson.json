@@ -23,5 +23,10 @@
     "num_poses": 10,
     "path_step_size": 0.1,
     "cruise_velocity": 20.0,
-    "mcu_link_enabled": true
+    "mcu_link_enabled": true,
+
+    "enable_stop_signs": false,
+    "stop_sign_distance": 2.0,
+    "stop_sign_buffer": 0.3,
+    "stop_sign_hold_time_s": 2.0
 }
