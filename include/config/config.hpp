@@ -9,12 +9,14 @@ namespace adas::config {
 
 struct PerceptionConfig {
   std::string image_path{"assets/calibration/PXL_20260921_201642411.jpg"};
-  std::string intrinsics_path{""};
-  std::string extrinsics_path{"config/calibration/extrinsic_calibration.xml"};
-  int ransac_iterations{150};
+  std::string intrinsics_path{"assets/calibration/intrinsic/emeet/emeet_intrinsics.xml"};
+  std::string extrinsics_path{"assets/calibration/extrinsic/emeet/emeet_calibration_4.xml"};
+
+  int ransac_iterations{50};
   float ransac_inlier_threshold{10.0f};
-  int min_inlier_count{20};
+  int min_inlier_count{2000};
   int white_pixel_threshold{180};
+  
   std::string object_label{"vehicle"};
   float object_bbox_x{750.0f};
   float object_bbox_y{420.0f};
@@ -46,12 +48,6 @@ struct PerceptionConfig {
   double path_step_size{0.5};
   double cruise_velocity{1.0};
 
-  // Stop sign handling fields
-  bool enable_stop_signs{false};
-  double stop_sign_distance{2.0};
-  double stop_sign_buffer{0.3};
-  double stop_sign_hold_time_s{1.0};
-
   // Controller fields
   double stanley_k{1.0};
   double max_steering_angle{0.5235987755982988};
@@ -61,6 +57,15 @@ struct PerceptionConfig {
   //MCU Link fields
   bool mcu_link_enabled{false};
   std::string mcu_link_device{"/dev/spidev0.0"};
+
+   // Stop sign handling fields
+  bool enable_stop_signs{false};
+  double stop_sign_distance{2.0};
+  double stop_sign_buffer{0.3};
+  double stop_sign_hold_time_s{1.0};
+
+  //Debug Print flags
+  bool enable_main_frequency_prints{false};
 
 };
 
@@ -101,7 +106,9 @@ inline void to_json(nlohmann::json &j, const PerceptionConfig &c) {
                      {"enable_stop_signs", c.enable_stop_signs},
                      {"stop_sign_distance", c.stop_sign_distance},
                      {"stop_sign_buffer", c.stop_sign_buffer},
-                     {"stop_sign_hold_time_s", c.stop_sign_hold_time_s}};
+                     {"stop_sign_hold_time_s", c.stop_sign_hold_time_s},
+                     {"enable_main_frequency_prints", c.enable_main_frequency_prints}};
+
   if (!c.class_real_heights.empty()) {
     nlohmann::json crh = nlohmann::json::object();
     for (const auto &[k, v] : c.class_real_heights) {
@@ -134,17 +141,8 @@ inline void from_json(const nlohmann::json &j, PerceptionConfig &c) {
   c.path_step_size = j.value("path_step_size", c.path_step_size);
   c.cruise_velocity = j.value("cruise_velocity", c.cruise_velocity);
 
-  if (j.contains("stanley_k")) {
-    c.stanley_k = j["stanley_k"].get<double>();
-  } else if (j.contains("stanley_constant")) {
-    c.stanley_k = j["stanley_constant"].get<double>();
-  } else if (j.contains("stanley_coefficient")) {
-    c.stanley_k = j["stanley_coefficient"].get<double>();
-  } else if (j.contains("stanley_gain")) {
-    c.stanley_k = j["stanley_gain"].get<double>();
-  } else if (j.contains("k")) {
-    c.stanley_k = j["k"].get<double>();
-  }
+  c.stanley_k = j.value("max_steering_angle", c.stanley_k);
+
   c.max_steering_angle = j.value("max_steering_angle", c.max_steering_angle);
   c.softening_constant = j.value("softening_constant", c.softening_constant);
   c.wheelbase = j.value("wheelbase", c.wheelbase);
@@ -222,6 +220,10 @@ inline void from_json(const nlohmann::json &j, PerceptionConfig &c) {
   if (j.contains("stop_sign_hold_time_s")) {
     c.stop_sign_hold_time_s = j["stop_sign_hold_time_s"].get<double>();
   }
+
+  c.enable_main_frequency_prints = j.value(
+      "enable_main_frequency_prints",
+      j.value("enable_main_frequency_print", c.enable_main_frequency_prints));
 
   if (j.contains("target_class_ids")) {
     c.target_class_ids = j["target_class_ids"].get<std::vector<int>>();

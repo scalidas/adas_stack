@@ -20,10 +20,9 @@
 enum mode {
     INTRINSIC_CALIBRATION,
     EXTRINSIC_CALIBRATION,
-    IMAGE_LANE_DEMO,
+    LIVE_LANE_DEMO,
     ROAD_OBJECT_DEMO,
     YOLO_LIVE_DEMO,
-    PERCEPTION_DEMO,
     ADAS_DEMO,
 };
 
@@ -60,14 +59,11 @@ int main(int argc, char** argv) {
     } else if (arg_mode == "extrinsic_calibration") {
         mode = EXTRINSIC_CALIBRATION;
     } else if (arg_mode == "detect_lane_demo") {
-        mode = IMAGE_LANE_DEMO;
+        mode = LIVE_LANE_DEMO;
     } else if (arg_mode == "road_object_demo" || arg_mode == "object_demo") {
         mode = ROAD_OBJECT_DEMO;
     } else if (arg_mode == "yolo_live_demo") {
         mode = YOLO_LIVE_DEMO;
-    } else if (arg_mode == "perception_demo" ||
-               arg_mode == "live_perception_demo") {
-        mode = PERCEPTION_DEMO;
     } else if (arg_mode == "adas_demo") {
         mode = ADAS_DEMO;
     } else {
@@ -103,7 +99,7 @@ int main(int argc, char** argv) {
             return adas::calibration::run_extrinsic_calibration(image_file,
                                                                 output_file);
         }
-        case IMAGE_LANE_DEMO: {
+        case LIVE_LANE_DEMO: {
             // Expect config file to be passed in
             if (argc != 3) {
                 std::cout << "Invalid number of arguments" << std::endl;
@@ -179,21 +175,6 @@ int main(int argc, char** argv) {
                           << config.model_path << std::endl;
                 return -1;
             }
-        }
-        case PERCEPTION_DEMO: {
-            // Expect config file containing model path, engine type, webcam id, intrinsics
-            if (argc != 3) {
-                std::cout << "Usage: adas_stack perception_demo <config_file>"
-                          << std::endl;
-                return -1;
-            }
-
-            std::string config_file = argv[2];
-            adas::config::PerceptionConfig config =
-                adas::config::load_config(config_file);
-
-            adas::perception::PerceptionEngine perception_engine(config);
-            return perception_engine.runLiveDemo() ? 0 : -1;
         }
         case ADAS_DEMO: {
             if (argc != 3) {

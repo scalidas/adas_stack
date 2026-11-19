@@ -1,4 +1,6 @@
 #include "core/orchestrator.hpp"
+#include <chrono>
+#include <iostream>
 #include "config/config.hpp"
 #include "streaming/websocket_streamer.hpp"
 
@@ -60,9 +62,13 @@ int adas::core::Orchestrator::run() {
     cv::Mat raw_frame;
     cv::Mat inv_ipm = perception_engine.get_ipm().inv();
 
-    std::cout << "[Orchestrator] Live demo running. Press 'q' or 'ESC' to exit."
+    std::cout << "[Orchestrator] Live demo running. Press 'r' to pause, or 'q' or 'ESC' to exit."
               << std::endl;
 
+    //Keep track of the effective rate/frequency.
+    auto last_time = std::chrono::steady_clock::now();
+    int num_iterations = 0;
+    
     while (true) {
         if (state == STOPPED) {
             //Wait for user to restart
@@ -114,6 +120,17 @@ int adas::core::Orchestrator::run() {
         (void)result;
 //TODO: Handle SPI result failure if needed
 #endif
+
+        if (config.enable_main_frequency_prints) {
+            num_iterations++;
+
+            auto current_time = std::chrono::steady_clock::now();
+            double dt = std::chrono::duration<double>(current_time - last_time).count();
+            last_time = current_time;
+            if (dt > 1.0) {
+                std::cout << "[Orchestrator] Frequency: " << (static_cast<double>(num_iterations) / dt) << " Hz\n";
+            }
+        }
 
         // Prepare visualization canvas
         cv::Mat display_frame = frame.clone();

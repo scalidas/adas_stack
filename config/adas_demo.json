@@ -8,6 +8,7 @@
     "model_path": "models/yolov8n.onnx",
     "engine_type": "tensorrt",
     "webcam_id": 0,
+    
     "target_class_ids": [
         39,
         11
@@ -16,6 +17,7 @@
         "39": 0.2,
         "11" : 0.07
     },
+
     "enable_webserver": true,
     "webserver_port": 9002,
     "webserver_host": "0.0.0.0",

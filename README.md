@@ -28,26 +28,40 @@ cmake -G "Ninja" -DCMAKE_BUILD_TYPE=Release .
 cmake --build build
 ```
 
-#### Perception Demo
-
+#### Adas Demo (Jetson)
 ```
-.\build\Release\adas_stack.exe perception_demo config/live_perception_demo.json
+./build/adas_stack adas_demo ./config/adas_demo.json
 ```
 
-#### Detect Lane
+#### Adas Demo (Windows)
+```
+.\build\Release\adas_stack.exe adas_demo ./config/adas_demo.json
+```
+
+#### Detect Lane Demo (Jetson)
+```
+./build/adas_stack detect_lane_demo ./config/live_lane_demo.json
+```
+
+#### Detect Lane Demo (Windows)
 
 ```
 .\build\Release\adas_stack.exe detect_lane_demo --config config/perception_config.json
 ```
 
+#### Extrinsic Calibrate (Jetson)
+```
+./build/adas_stack extrinsic_calibration assets\calibration\phone_mounted_calibration.jpg
+```
+
+#### Extrinsic Calibrate (Windows)
+```
+.\build\Release\adas_stack.exe extrinsic_calibration assets\calibration\phone_mounted_calibration.jpg
+```
+
 #### Intrinsic Calibrate
 ```
 .\build\Release\adas_stack.exe instrinsic_calibration assets\calibration\phone_mounted_calibration.jpg
-```
-
-#### Extrinsic Calibrate
-```
-.\build\Release\adas_stack.exe extrinsic_calibration assets\calibration\phone_mounted_calibration.jpg
 ```
 
 #### Object Demo

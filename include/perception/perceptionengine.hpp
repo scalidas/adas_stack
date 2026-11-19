@@ -62,15 +62,6 @@ class PerceptionEngine {
 
     const cv::Mat& get_ipm() const { return ipm; }
     const cv::Mat& get_ipm() { return ipm; }
-
-    bool runLiveDemo();
-
-    // Webserver / Streaming interface
-    bool start_webserver();
-    void stop_webserver();
-    bool is_webserver_running() const;
-    void broadcast_world_model(const adas::core::WorldModel& world_model);
-    streaming::WebSocketStreamer* get_streamer() const { return streamer.get(); }
 };
 
 }  // namespace adas::perception

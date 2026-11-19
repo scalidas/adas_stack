@@ -1,4 +1,5 @@
 #include "yolo/opencv_dnn_engine.hpp"
+#include "core/orchestrator.hpp"
 #include "perception/perceptionengine.hpp"
 #include "planning/planner.hpp"
 #include "streaming/websocket_streamer.hpp"
@@ -187,14 +188,14 @@ int main() {
       assert(!streamer.is_running());
       std::cout << "[Test] WebSocketStreamer lifecycle and broadcast passed." << std::endl;
 
-      // Verify PerceptionEngine webserver integration
+      // Verify Orchestrator webserver integration
       ws_config.model_path = ""; // Skip loading heavy model for lightweight test
-      adas::perception::PerceptionEngine pe(ws_config);
-      assert(pe.is_webserver_running());
-      pe.broadcast_world_model(wm);
-      pe.stop_webserver();
-      assert(!pe.is_webserver_running());
-      std::cout << "[Test] PerceptionEngine webserver integration passed." << std::endl;
+      adas::core::Orchestrator orch(ws_config);
+      assert(orch.is_webserver_running());
+      orch.broadcast_world_model(wm);
+      orch.stop_webserver();
+      assert(!orch.is_webserver_running());
+      std::cout << "[Test] Orchestrator webserver integration passed." << std::endl;
     }
 
     // 11. Test Extrinsic Calibration and Ground Plane Transformation

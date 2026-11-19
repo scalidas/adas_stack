@@ -33,13 +33,13 @@ class Orchestrator {
     bool enable_webserver;
     std::unique_ptr<streaming::WebSocketStreamer> streamer;
 
+   public:
     bool start_webserver();
     void stop_webserver();
     bool is_webserver_running() const;
     void broadcast_world_model(const adas::core::WorldModel& world_model);
     streaming::WebSocketStreamer* get_streamer() const { return streamer.get(); }
 
-   public:
     explicit Orchestrator(const adas::config::PerceptionConfig& cfg)
         : config(cfg),
           perception_engine(cfg),
