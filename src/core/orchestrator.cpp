@@ -121,7 +121,8 @@ int adas::core::Orchestrator::run() {
 //TODO: Handle SPI result failure if needed
 #endif
 
-        if (config.enable_main_frequency_prints) {
+        std::cout << enable_main_frequency_prints;
+        if (enable_main_frequency_prints) {
             num_iterations++;
 
             auto current_time = std::chrono::steady_clock::now();

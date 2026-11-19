@@ -33,6 +33,8 @@ class Orchestrator {
     bool enable_webserver;
     std::unique_ptr<streaming::WebSocketStreamer> streamer;
 
+    bool enable_main_frequency_prints;
+
    public:
     bool start_webserver();
     void stop_webserver();
@@ -48,7 +50,8 @@ class Orchestrator {
           state(CRUISE),
           webcam_id(cfg.webcam_id),
           enable_webserver(cfg.enable_webserver),
-          streamer(std::make_unique<streaming::WebSocketStreamer>(cfg)) {
+          streamer(std::make_unique<streaming::WebSocketStreamer>(cfg)),
+          enable_main_frequency_prints(cfg.enable_main_frequency_prints) {
         if (cfg.image_path.rfind("webcam", 0) == 0) {
             try {
                 std::string idx_str = cfg.image_path.substr(6);
