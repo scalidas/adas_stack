@@ -16,6 +16,7 @@ struct PerceptionConfig {
   float ransac_inlier_threshold{10.0f};
   int min_inlier_count{2000};
   int white_pixel_threshold{180};
+  double ransac_downscale{1.0};
   
   std::string object_label{"vehicle"};
   float object_bbox_x{750.0f};
@@ -77,6 +78,7 @@ inline void to_json(nlohmann::json &j, const PerceptionConfig &c) {
                      {"ransac_inlier_threshold", c.ransac_inlier_threshold},
                      {"min_inlier_count", c.min_inlier_count},
                      {"white_pixel_threshold", c.white_pixel_threshold},
+                     {"ransac_downscale", c.ransac_downscale},
                      {"object_label", c.object_label},
                      {"object_bbox_x", c.object_bbox_x},
                      {"object_bbox_y", c.object_bbox_y},
@@ -128,6 +130,9 @@ inline void from_json(const nlohmann::json &j, PerceptionConfig &c) {
   c.min_inlier_count = j.value("min_inlier_count", c.min_inlier_count);
   c.white_pixel_threshold =
       j.value("white_pixel_threshold", c.white_pixel_threshold);
+  if (j.contains("ransac_downscale") && j["ransac_downscale"].is_number()) {
+    c.ransac_downscale = j["ransac_downscale"].get<double>();
+  }
   c.object_label = j.value("object_label", c.object_label);
   c.object_bbox_x = j.value("object_bbox_x", c.object_bbox_x);
   c.object_bbox_y = j.value("object_bbox_y", c.object_bbox_y);

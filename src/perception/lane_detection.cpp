@@ -233,20 +233,67 @@ detect_lanes(cv::Mat &bev, const adas::config::PerceptionConfig &config) {
   cv::threshold(gray, binary, config.white_pixel_threshold, 255,
                 cv::THRESH_BINARY);
 
-  // Extract all candidate non-zero edge pixels from BEV
+  double downscale = config.ransac_downscale;
+  if (downscale > 0.0 && downscale < 1.0) {
+    downscale = 1.0 / downscale;
+  }
+  if (downscale < 1.0) {
+    downscale = 1.0;
+  }
+
+  cv::Mat binary_for_ransac;
+  double scale_x = 1.0;
+  double scale_y = 1.0;
+
+  if (downscale > 1.0) {
+    int downscaled_w =
+        std::max(1, static_cast<int>(std::round(binary.cols / downscale)));
+    int downscaled_h =
+        std::max(1, static_cast<int>(std::round(binary.rows / downscale)));
+    cv::resize(binary, binary_for_ransac, cv::Size(downscaled_w, downscaled_h),
+               0, 0, cv::INTER_AREA);
+    cv::threshold(binary_for_ransac, binary_for_ransac, 0, 255,
+                  cv::THRESH_BINARY);
+    scale_x = static_cast<double>(binary.cols) / downscaled_w;
+    scale_y = static_cast<double>(binary.rows) / downscaled_h;
+  } else {
+    binary_for_ransac = binary;
+  }
+
+  // Extract candidate non-zero edge pixels
   std::vector<cv::Point> non_zero_locs;
-  cv::findNonZero(binary, non_zero_locs);
+  cv::findNonZero(binary_for_ransac, non_zero_locs);
 
-  std::vector<cv::Point2f> input_points(non_zero_locs.begin(),
-                                        non_zero_locs.end());
+  std::vector<cv::Point2f> input_points;
+  input_points.reserve(non_zero_locs.size());
+  if (downscale > 1.0) {
+    for (const auto &pt : non_zero_locs) {
+      input_points.emplace_back(static_cast<float>((pt.x + 0.5) * scale_x),
+                                static_cast<float>((pt.y + 0.5) * scale_y));
+    }
+  } else {
+    for (const auto &pt : non_zero_locs) {
+      input_points.emplace_back(static_cast<float>(pt.x),
+                                static_cast<float>(pt.y));
+    }
+  }
 
+  int effective_min_inliers = config.min_inlier_count;
+  if (downscale > 1.0) {
+    int scaled = static_cast<int>(
+        std::round(config.min_inlier_count / (downscale * downscale)));
+    effective_min_inliers = std::max(10, scaled);
+    if (config.min_inlier_count < 10) {
+      effective_min_inliers = config.min_inlier_count;
+    }
+  }
 
   std::vector<adas::core::PolynomialLaneBoundary> detected_boundaries;
 
   // Fit boundaries using RANSAC parameters from config
   auto lanes =
       fitLaneRANSAC(input_points, config.ransac_iterations,
-                    config.ransac_inlier_threshold, config.min_inlier_count);
+                    config.ransac_inlier_threshold, effective_min_inliers);
   if (!lanes.empty()) {
     detected_boundaries.insert(detected_boundaries.end(), lanes.begin(),
                                lanes.end());

@@ -1,10 +1,12 @@
 #include "controller/stanley_controller.hpp"
+#include "perception/lane_detection.hpp"
 #include "planning/planner.hpp"
 #include "streaming/websocket_streamer.hpp"
 #include <cassert>
 #include <cmath>
 #include <fstream>
 #include <iostream>
+#include <opencv2/opencv.hpp>
 #include <thread>
 
 int main() {
@@ -312,6 +314,61 @@ int main() {
         assert(traj_cleared.points[0].target_velocity == 2.0);
 
         std::cout << "[Test] Stop sign planning, deceleration, 1s pause, and proceed passed." << std::endl;
+    }
+
+    // 9. Test ransac_downscale config serialization and lane detection with downscaling
+    {
+        // A. Config serialization and deserialization
+        adas::config::PerceptionConfig default_cfg;
+        assert(std::abs(default_cfg.ransac_downscale - 1.0) < 1e-6);
+
+        nlohmann::json j_float = {{"ransac_downscale", 4.0}};
+        adas::config::PerceptionConfig cfg_float;
+        adas::config::from_json(j_float, cfg_float);
+        assert(std::abs(cfg_float.ransac_downscale - 4.0) < 1e-6);
+
+        nlohmann::json j_int = {{"ransac_downscale", 2}};
+        adas::config::PerceptionConfig cfg_int;
+        adas::config::from_json(j_int, cfg_int);
+        assert(std::abs(cfg_int.ransac_downscale - 2.0) < 1e-6);
+
+        nlohmann::json serialized = cfg_float;
+        assert(serialized.contains("ransac_downscale"));
+        assert(std::abs(serialized["ransac_downscale"].get<double>() - 4.0) < 1e-6);
+
+        // B. Test detect_lanes with synthetic 640x480 BEV image
+        cv::Mat bev = cv::Mat::zeros(480, 640, CV_8UC3);
+        // Draw two vertical white lane lines at x = 220 and x = 420
+        cv::line(bev, cv::Point(220, 100), cv::Point(220, 450), cv::Scalar(255, 255, 255), 6);
+        cv::line(bev, cv::Point(420, 100), cv::Point(420, 450), cv::Scalar(255, 255, 255), 6);
+
+        adas::config::PerceptionConfig test_cfg;
+        test_cfg.white_pixel_threshold = 200;
+        test_cfg.ransac_iterations = 50;
+        test_cfg.ransac_inlier_threshold = 15.0f;
+        test_cfg.min_inlier_count = 500;
+
+        // Test at full resolution (ransac_downscale = 1.0)
+        test_cfg.ransac_downscale = 1.0;
+        auto lanes_full = adas::perception::detect_lanes(bev, test_cfg);
+        assert(lanes_full.size() == 2);
+        double full_x1 = lanes_full[0].evaluate(300.0);
+        double full_x2 = lanes_full[1].evaluate(300.0);
+        if (full_x1 > full_x2) std::swap(full_x1, full_x2);
+        assert(std::abs(full_x1 - 220.0) < 5.0);
+        assert(std::abs(full_x2 - 420.0) < 5.0);
+
+        // Test at reduced resolution (ransac_downscale = 4.0)
+        test_cfg.ransac_downscale = 4.0;
+        auto lanes_downscaled = adas::perception::detect_lanes(bev, test_cfg);
+        assert(lanes_downscaled.size() == 2);
+        double down_x1 = lanes_downscaled[0].evaluate(300.0);
+        double down_x2 = lanes_downscaled[1].evaluate(300.0);
+        if (down_x1 > down_x2) std::swap(down_x1, down_x2);
+        assert(std::abs(down_x1 - 220.0) < 6.0);
+        assert(std::abs(down_x2 - 420.0) < 6.0);
+
+        std::cout << "[Test] ransac_downscale config and reduced-resolution lane detection passed." << std::endl;
     }
 
     std::cout << "[Test] ALL STANLEY CONTROLLER TESTS PASSED SUCCESSFULLY!" << std::endl;

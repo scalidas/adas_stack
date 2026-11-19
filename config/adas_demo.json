@@ -5,6 +5,7 @@
     "ransac_inlier_threshold": 50.0,
     "ransac_iterations": 50,
     "white_pixel_threshold": 205,
+    "ransac_downscale": 4.0,
     "model_path": "models/yolov8n.onnx",
     "engine_type": "tensorrt",
     "webcam_id": 0,
