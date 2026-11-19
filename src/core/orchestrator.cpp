@@ -121,16 +121,17 @@ int adas::core::Orchestrator::run() {
 //TODO: Handle SPI result failure if needed
 #endif
 
-        std::cout << enable_main_frequency_prints;
         if (enable_main_frequency_prints) {
             num_iterations++;
 
             auto current_time = std::chrono::steady_clock::now();
             double dt = std::chrono::duration<double>(current_time - last_time).count();
-            last_time = current_time;
             if (dt > 1.0) {
                 std::cout << "[Orchestrator] Frequency: " << (static_cast<double>(num_iterations) / dt) << " Hz\n";
             }
+
+            last_time = current_time;
+            num_iterations = 0;
         }
 
         // Prepare visualization canvas
