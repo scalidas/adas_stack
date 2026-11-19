@@ -126,12 +126,11 @@ int adas::core::Orchestrator::run() {
 
             auto current_time = std::chrono::steady_clock::now();
             double dt = std::chrono::duration<double>(current_time - last_time).count();
-            if (dt > 1.0) {
-                std::cout << "[Orchestrator] Frequency: " << (static_cast<double>(num_iterations) / dt) << " Hz\n";
+            if (dt >= 1.0) {
+                std::cout << "[Orchestrator] Frequency: " << (static_cast<double>(num_iterations) / dt) << " Hz" << std::endl;
+                last_time = current_time;
+                num_iterations = 0;
             }
-
-            last_time = current_time;
-            num_iterations = 0;
         }
 
         // Prepare visualization canvas
